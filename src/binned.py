@@ -48,15 +48,16 @@ def calc_nll(sig_scale, bkg_scale, N_obs, S_template, B_template, S_sigma2, B_si
                 alpha = (mu**2) / sigma2 + 1.0
                 beta = max(mu / sigma2, 1e-300) # Guard against extreme precision loss
                 
+                # Removed static - math.lgamma(n_obs + 1.0) constant for speed
                 lnL = (alpha * math.log(beta) 
                        + math.lgamma(n_obs + alpha) 
-                       - math.lgamma(n_obs + 1.0) 
                        - (n_obs + alpha) * math.log(1.0 + beta) 
                        - math.lgamma(alpha))
                 nll += -2.0 * lnL
             else:
                 # Smooth fallback to Standard Poisson NLL for very large MC statistics
-                lnL_poisson = n_obs * math.log(mu) - mu - math.lgamma(n_obs + 1.0)
+                # Removed static - math.lgamma(n_obs + 1.0) constant for speed
+                lnL_poisson = n_obs * math.log(mu) - mu
                 nll += -2.0 * lnL_poisson
         else:
             # Standard deviance form for purely analytical Poisson
@@ -86,6 +87,7 @@ def unconditional_fit_grid(N_obs, S_template, B_template, sig_grid, bkg_grid, S_
 
 @njit(fastmath=True, nogil=True)
 def conditional_fit_grid(test_sig, N_obs, S_template, B_template, bkg_grid, S_sigma2, B_sigma2, use_finite_mc):
+    """Profiles background scale while holding signal scale fixed."""
     min_nll = 1e10
     best_bkg = bkg_grid[0]
     
@@ -96,6 +98,20 @@ def conditional_fit_grid(test_sig, N_obs, S_template, B_template, bkg_grid, S_si
             best_bkg = b
     return min_nll, best_bkg
 
+@njit(fastmath=True, nogil=True)
+def conditional_fit_grid_profile_sig(test_bkg, N_obs, S_template, B_template, sig_grid, S_sigma2, B_sigma2, use_finite_mc):
+    """Profiles signal scale while holding background scale fixed."""
+    min_nll = 1e10
+    best_sig = sig_grid[0]
+    
+    for s in sig_grid:
+        nll = calc_nll(s, test_bkg, N_obs, S_template, B_template, S_sigma2, B_sigma2, use_finite_mc)
+        if nll < min_nll:
+            min_nll = nll
+            best_sig = s
+    return min_nll, best_sig
+
+# --- 4. Toy Generators (Binned) ---
 @njit(fastmath=True, parallel=True, nogil=True)
 def generate_and_fit_toys_grid(test_sig, profiled_bkg, S_template, B_template, 
                                sig_grid, bkg_grid, n_toys, S_sigma2, B_sigma2, use_finite_mc):
@@ -110,6 +126,45 @@ def generate_and_fit_toys_grid(test_sig, profiled_bkg, S_template, B_template,
             
         uncond_nll, _, _ = unconditional_fit_grid(toy_N, S_template, B_template, sig_grid, bkg_grid, S_sigma2, B_sigma2, use_finite_mc)
         cond_nll, _ = conditional_fit_grid(test_sig, toy_N, S_template, B_template, bkg_grid, S_sigma2, B_sigma2, use_finite_mc)
+        
+        t_stat = cond_nll - uncond_nll
+        t_statistics[t] = max(0.0, t_stat) 
+    return t_statistics
+
+@njit(fastmath=True, parallel=True, nogil=True)
+def generate_and_fit_toys_grid_profile_sig(test_bkg, profiled_sig, S_template, B_template, 
+                                           sig_grid, bkg_grid, n_toys, S_sigma2, B_sigma2, use_finite_mc):
+    t_statistics = np.zeros(n_toys)
+    n_bins = len(S_template)
+    
+    for t in prange(n_toys):
+        toy_N = np.zeros(n_bins)
+        for i in range(n_bins):
+            mu_true = profiled_sig * S_template[i] + test_bkg * B_template[i]
+            toy_N[i] = np.random.poisson(mu_true)
+            
+        uncond_nll, _, _ = unconditional_fit_grid(toy_N, S_template, B_template, sig_grid, bkg_grid, S_sigma2, B_sigma2, use_finite_mc)
+        cond_nll, _ = conditional_fit_grid_profile_sig(test_bkg, toy_N, S_template, B_template, sig_grid, S_sigma2, B_sigma2, use_finite_mc)
+        
+        t_stat = cond_nll - uncond_nll
+        t_statistics[t] = max(0.0, t_stat) 
+    return t_statistics
+
+@njit(fastmath=True, parallel=True, nogil=True)
+def generate_and_fit_toys_grid_2d(test_sig, test_bkg, S_template, B_template, 
+                                  sig_grid, bkg_grid, n_toys, S_sigma2, B_sigma2, use_finite_mc):
+    """Evaluates 2D interval conditionally without profiling."""
+    t_statistics = np.zeros(n_toys)
+    n_bins = len(S_template)
+    
+    for t in prange(n_toys):
+        toy_N = np.zeros(n_bins)
+        for i in range(n_bins):
+            mu_true = test_sig * S_template[i] + test_bkg * B_template[i]
+            toy_N[i] = np.random.poisson(mu_true)
+            
+        uncond_nll, _, _ = unconditional_fit_grid(toy_N, S_template, B_template, sig_grid, bkg_grid, S_sigma2, B_sigma2, use_finite_mc)
+        cond_nll = calc_nll(test_sig, test_bkg, toy_N, S_template, B_template, S_sigma2, B_sigma2, use_finite_mc)
         
         t_stat = cond_nll - uncond_nll
         t_statistics[t] = max(0.0, t_stat) 
