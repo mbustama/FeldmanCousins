@@ -2,6 +2,10 @@ import numpy as np
 import warnings
 import logging
 import concurrent.futures
+import json
+import argparse
+import sys
+import os
 
 # --- Local Component Imports ---
 from binned import (
@@ -32,18 +36,14 @@ except ImportError:
 try:
     import ultranest
     ULTRANEST_AVAILABLE = True
-    print("UltraNest detected: Advanced global sampling enabled.")
 except ImportError:
     ULTRANEST_AVAILABLE = False
-    print("UltraNest not found: Global sampling disabled.")
 
 try:
     from scipy import optimize
     SCIPY_AVAILABLE = True
-    print("Scipy detected: Fast local minimization enabled.")
 except ImportError:
     SCIPY_AVAILABLE = False
-    print("Scipy not found: Scipy strategies disabled.")
 
 
 # --- 1. Scipy Continuous Optimizers (Branched for Binned/Unbinned) ---
@@ -124,8 +124,6 @@ def generate_and_fit_toys_python(test_sig, profiled_bkg, S_model, B_model,
                                  sig_bounds, bkg_bounds, n_toys, strategy, num_cores=None, verbose=1,
                                  likelihood_type="binned", S_mc_pool=None, B_mc_pool=None):
     """Handles threaded generation & fitting for both Binned and Unbinned schemas."""
-    
-    # Pre-generate purely Poisson toys if binned to save overhead inside threads
     toys_binned_data = None
     if likelihood_type == "binned":
         mu_true = test_sig * S_model + profiled_bkg * B_model
@@ -135,7 +133,6 @@ def generate_and_fit_toys_python(test_sig, profiled_bkg, S_model, B_model,
         if likelihood_type == "binned":
             toy_data = toys_binned_data[t]
         else:
-            # Resampling bootstrapped unbinned events on-the-fly to manage memory
             toy_data = generate_unbinned_toy(test_sig, profiled_bkg, S_mc_pool, B_mc_pool)
         
         if strategy == "scipy" or strategy == "hybrid":
@@ -158,16 +155,31 @@ def generate_and_fit_toys_python(test_sig, profiled_bkg, S_model, B_model,
 # --- 4. Main Feldman-Cousins Wrapper ---
 def compute_fc_intervals(data, S_model, B_model, 
                          sig_test_points, bkg_grid, 
-                         n_toys=2000, cl=0.90, strategy="scipy", num_cores=None, verbose=1,
+                         cl=[0.90], n_toys=2000, strategy="scipy", num_cores=None, verbose=1,
                          adaptive_toys=True, toy_batch_size=200, 
                          sparsify_grid=True, warm_start=True,
-                         likelihood_type="binned", S_mc_pool=None, B_mc_pool=None):
+                         likelihood_type="binned", S_mc_pool=None, B_mc_pool=None,
+                         output_file=None, save_log=False):
     """
     Orchestrates the Feldman-Cousins construction.
     Supports Likelihoods: 'binned' or 'unbinned'.
-    - If binned: S_model/B_model are arrays (templates).
-    - If unbinned: S_model/B_model are callable PDF functions, data is an array of observables, and S_mc_pool/B_mc_pool are required for bootstrapping.
     """
+    # Setup Logging Architecture
+    run_logger = logging.getLogger("FC_Orchestrator")
+    run_logger.setLevel(logging.INFO)
+    if save_log and not run_logger.handlers:
+        fh = logging.FileHandler('fc_run.log')
+        fh.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+        run_logger.addHandler(fh)
+        
+    def log_print(msg):
+        if verbose > 0: print(msg)
+        if save_log: run_logger.info(msg)
+
+    # Standardize CL to list
+    if isinstance(cl, (float, int)):
+        cl = [float(cl)]
+
     valid_strategies = ["grid", "scipy", "ultranest", "hybrid"]
     valid_likelihoods = ["binned", "unbinned"]
     
@@ -176,35 +188,33 @@ def compute_fc_intervals(data, S_model, B_model,
     if likelihood_type not in valid_likelihoods:
         raise ValueError(f"likelihood_type must be one of {valid_likelihoods}")
         
-    if likelihood_type == "unbinned" and strategy == "grid" and verbose > 0:
-        print("Notice: Unbinned grid strategy bypasses Numba compiler to allow Python callables.")
+    if likelihood_type == "unbinned" and strategy == "grid":
+        log_print("Notice: Unbinned grid strategy bypasses Numba compiler to allow Python callables.")
         
     if strategy in ["ultranest", "hybrid"] and not ULTRANEST_AVAILABLE:
-        if verbose > 0: print("Warning: ultranest not installed. Falling back to scipy.")
+        log_print("Warning: ultranest not installed. Falling back to scipy.")
         strategy = "scipy"
     if strategy in ["scipy", "hybrid"] and not SCIPY_AVAILABLE:
-        if verbose > 0: print("Warning: scipy not installed. Falling back to grid.")
+        log_print("Warning: scipy not installed. Falling back to grid.")
         strategy = "grid"
 
-    if ULTRANEST_AVAILABLE:
-        un_logger = logging.getLogger("ultranest")
-        if verbose < 2:
-            un_logger.setLevel(logging.WARNING)
+    if ULTRANEST_AVAILABLE and verbose < 2:
+        logging.getLogger("ultranest").setLevel(logging.WARNING)
 
     if NUMBA_AVAILABLE and num_cores is not None:
         set_num_threads(num_cores)
 
-    if verbose > 0:
-        print(f"Starting FC Construction: {len(sig_test_points)} test points, up to {n_toys} toys/point.")
-        print(f"Schema: {likelihood_type.upper()} | Strategy: {strategy.upper()} (Cores: {num_cores if num_cores else 'Max'})")
-        print(f"Optimizations -> Warm Start: {warm_start}, Adaptive Toys: {adaptive_toys}, Grid Sparsification: {sparsify_grid}")
+    log_print(f"Starting FC Construction: {len(sig_test_points)} test points, up to {n_toys} toys/point.")
+    log_print(f"Confidence Levels: {cl}")
+    log_print(f"Schema: {likelihood_type.upper()} | Strategy: {strategy.upper()} (Cores: {num_cores if num_cores else 'Max'})")
+    log_print(f"Optimizations -> Warm Start: {warm_start}, Adaptive Toys: {adaptive_toys}, Grid Sparsification: {sparsify_grid}")
     
     results = {
         "test_sig": sig_test_points,
         "t_data": np.zeros(len(sig_test_points)),
-        "t_critical": np.zeros(len(sig_test_points)),
-        "accepted": np.zeros(len(sig_test_points), dtype=bool),
-        "profiled_bkg": np.zeros(len(sig_test_points))
+        "profiled_bkg": np.zeros(len(sig_test_points)),
+        "t_critical": {c: np.zeros(len(sig_test_points)) for c in cl},
+        "accepted": {c: np.zeros(len(sig_test_points), dtype=bool) for c in cl}
     }
     
     sig_grid = sig_test_points 
@@ -253,7 +263,6 @@ def compute_fc_intervals(data, S_model, B_model,
         data_t = results["t_data"][idx]
         
         if use_adaptive:
-            n_tail_req = n_toys - min(int(cl * n_toys), n_toys - 1)
             t_stats = []
             toys_done = 0
             
@@ -273,15 +282,26 @@ def compute_fc_intervals(data, S_model, B_model,
                 k = sum(1 for t in t_stats if t >= data_t)
                 toys_rem = n_toys - toys_done
                 
-                if k >= n_tail_req:
-                    results["t_critical"][idx] = data_t + 1e-3  # Bound guarantees acceptance
-                    return
-                if k + toys_rem < n_tail_req:
-                    results["t_critical"][idx] = data_t - 1e-3  # Bound guarantees rejection
+                # Check if EVERY requested CL is definitively resolved by current bounds
+                all_resolved = True
+                for c in cl:
+                    req = n_toys - min(int(c * n_toys), n_toys - 1)
+                    if not (k >= req or (k + toys_rem) < req):
+                        all_resolved = False
+                        break
+                
+                if all_resolved:
+                    for c in cl:
+                        req = n_toys - min(int(c * n_toys), n_toys - 1)
+                        if k >= req:
+                            results["t_critical"][c][idx] = data_t + 1e-3
+                        else:
+                            results["t_critical"][c][idx] = data_t - 1e-3
                     return
             
             t_stats.sort()
-            results["t_critical"][idx] = t_stats[min(int(cl * n_toys), n_toys - 1)]
+            for c in cl:
+                results["t_critical"][c][idx] = t_stats[min(int(c * n_toys), n_toys - 1)]
             
         else:
             if strategy == "grid":
@@ -292,7 +312,8 @@ def compute_fc_intervals(data, S_model, B_model,
             else:
                 toy_t_stats = generate_and_fit_toys_python(test_sig, bkg_data, S_model, B_model, sig_bounds, bkg_bounds, n_toys, strategy, num_cores, verbose=0, likelihood_type=likelihood_type, S_mc_pool=S_mc_pool, B_mc_pool=B_mc_pool)
             toy_t_stats.sort()
-            results["t_critical"][idx] = toy_t_stats[min(int(cl * n_toys), n_toys - 1)]
+            for c in cl:
+                results["t_critical"][c][idx] = toy_t_stats[min(int(c * n_toys), n_toys - 1)]
 
     # --- PHASE 2: Generate & Fit Toys ---
     indices_to_evaluate = []
@@ -303,26 +324,28 @@ def compute_fc_intervals(data, S_model, B_model,
         if coarse_indices[-1] != len(sig_test_points) - 1:
             coarse_indices.append(len(sig_test_points) - 1)
             
-        if verbose > 0: print(f"Sparsification: Running coarse grid ({len(coarse_indices)} points)...")
+        log_print(f"Sparsification: Running coarse grid ({len(coarse_indices)} points)...")
         for idx in tqdm(coarse_indices, desc="Coarse Toys", disable=disable_tqdm):
             run_toys_for_idx(idx, use_adaptive=False) 
             
         evaluated_x = sig_test_points[coarse_indices]
-        evaluated_tc = results["t_critical"][coarse_indices]
-        results["t_critical"][:] = np.interp(sig_test_points, evaluated_x, evaluated_tc)
-        
-        approx_accepted = results["t_data"] <= results["t_critical"]
         refinement_indices = set()
-        for i in range(len(approx_accepted) - 1):
-            if approx_accepted[i] != approx_accepted[i+1]:
-                start_pad = max(0, i - coarse_step)
-                end_pad = min(len(sig_test_points), i + coarse_step + 1)
-                for j in range(start_pad, end_pad):
-                    if j not in coarse_indices:
-                        refinement_indices.add(j)
+        
+        for c in cl:
+            evaluated_tc = results["t_critical"][c][coarse_indices]
+            results["t_critical"][c][:] = np.interp(sig_test_points, evaluated_x, evaluated_tc)
+            approx_accepted = results["t_data"] <= results["t_critical"][c]
+            
+            for i in range(len(approx_accepted) - 1):
+                if approx_accepted[i] != approx_accepted[i+1]:
+                    start_pad = max(0, i - coarse_step)
+                    end_pad = min(len(sig_test_points), i + coarse_step + 1)
+                    for j in range(start_pad, end_pad):
+                        if j not in coarse_indices:
+                            refinement_indices.add(j)
                         
         indices_to_evaluate = sorted(list(refinement_indices))
-        if verbose > 0: print(f"Sparsification: Found boundaries. Running {len(indices_to_evaluate)} refinement points...")
+        log_print(f"Sparsification: Found boundaries. Running {len(indices_to_evaluate)} refinement points...")
     else:
         indices_to_evaluate = list(range(len(sig_test_points)))
 
@@ -331,76 +354,172 @@ def compute_fc_intervals(data, S_model, B_model,
         for idx in iterator_toys:
             run_toys_for_idx(idx, use_adaptive=adaptive_toys)
             
-    # --- Final Acceptance Evaluation ---
-    results["accepted"] = results["t_data"] <= results["t_critical"]
+    # --- Final Acceptance Evaluation & Saving ---
+    for c in cl:
+        results["accepted"][c] = results["t_data"] <= results["t_critical"][c]
+        
+    if output_file is not None:
+        save_dict = {
+            "test_sig": results["test_sig"],
+            "t_data": results["t_data"],
+            "profiled_bkg": results["profiled_bkg"]
+        }
+        for c in cl:
+            save_dict[f"t_critical_{c}"] = results["t_critical"][c]
+            save_dict[f"accepted_{c}"] = results["accepted"][c]
+            
+        np.savez(output_file, **save_dict)
+        log_print(f"Results explicitly saved to {output_file}.npz")
         
     return results
 
 
-# --- 5. Execution Examples ---
+# --- 5. Config & CLI Logic ---
+def generate_sample_config(filename="fc_config.json"):
+    """Generates a sample JSON configuration file."""
+    default_config = {
+        "likelihood_type": "binned",
+        "cl": [0.68, 0.90],
+        "n_toys": 200,
+        "strategy": "scipy",
+        "num_cores": 4,
+        "verbose": 1,
+        "adaptive_toys": True,
+        "toy_batch_size": 200,
+        "sparsify_grid": True,
+        "warm_start": True,
+        "output_file": None,
+        "save_log": False
+    }
+    with open(filename, 'w') as f:
+        json.dump(default_config, f, indent=4)
+    print(f"Sample configuration written to {filename}")
+
+def parse_arguments():
+    """Parses hierarchy: Defaults -> JSON Config File -> CLI Arguments"""
+    parser = argparse.ArgumentParser(description="Feldman-Cousins Confidence Intervals")
+    
+    # Using argparse.SUPPRESS ensures the args dictionary ONLY contains variables the user actively typed
+    parser.add_argument('--config_file', type=str, help="Path to JSON config file", default=argparse.SUPPRESS)
+    parser.add_argument('--generate_config', action='store_true', help="Generate a sample JSON config and exit")
+    
+    parser.add_argument('--likelihood_type', type=str, choices=["binned", "unbinned"], default=argparse.SUPPRESS)
+    parser.add_argument('--cl', type=float, nargs='+', help="Confidence level(s) (e.g., 0.90 0.95)", default=argparse.SUPPRESS)
+    parser.add_argument('--n_toys', type=int, default=argparse.SUPPRESS)
+    parser.add_argument('--strategy', type=str, choices=["grid", "scipy", "ultranest", "hybrid"], default=argparse.SUPPRESS)
+    parser.add_argument('--num_cores', type=int, default=argparse.SUPPRESS)
+    parser.add_argument('--verbose', type=int, default=argparse.SUPPRESS)
+    parser.add_argument('--adaptive_toys', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
+    parser.add_argument('--toy_batch_size', type=int, default=argparse.SUPPRESS)
+    parser.add_argument('--sparsify_grid', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
+    parser.add_argument('--warm_start', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
+    parser.add_argument('--output_file', type=str, default=argparse.SUPPRESS)
+    parser.add_argument('--save_log', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
+    
+    args = parser.parse_args()
+    
+    if args.generate_config:
+        generate_sample_config()
+        sys.exit(0)
+        
+    # Base Hardcoded Defaults
+    config = {
+        "likelihood_type": "binned",
+        "cl": [0.90],
+        "n_toys": 200,
+        "strategy": "scipy",
+        "num_cores": None,
+        "verbose": 1,
+        "adaptive_toys": True,
+        "toy_batch_size": 200,
+        "sparsify_grid": True,
+        "warm_start": True,
+        "output_file": None,
+        "save_log": False
+    }
+    
+    # 1. Update with values from JSON Config File (if provided)
+    if hasattr(args, 'config_file'):
+        if os.path.exists(args.config_file):
+            with open(args.config_file, 'r') as f:
+                file_config = json.load(f)
+                config.update(file_config)
+        else:
+            print(f"Warning: Config file {args.config_file} not found. Proceeding with defaults.")
+
+    # 2. Update explicitly provided CLI Arguments (Overrides both Config & Defaults)
+    cli_args = vars(args)
+    for key, value in cli_args.items():
+        if key not in ['config_file', 'generate_config']:
+            config[key] = value
+            
+    return config
+
+
+# --- 6. Execution Examples ---
 if __name__ == "__main__":
     
-    # ---------------------------------------------------------
-    # Example A: Original BINNED Analysis
-    # ---------------------------------------------------------
-    print("\n--- Running BINNED Analysis Example ---")
-    S_template = np.array([0.1, 0.5, 2.0, 5.0])
-    B_template = np.array([15.0, 5.0, 1.0, 0.1])
-    
-    np.random.seed(42)
-    N_data_binned = np.random.poisson(1.0 * S_template + 1.0 * B_template)
-    print(f"Mock Observed Data (Binned Counts): {N_data_binned}")
+    config = parse_arguments()
     
     sig_grid = np.linspace(0.0, 3.0, 30)
     bkg_grid = np.linspace(0.5, 1.5, 20)
     
-    fc_results_binned = compute_fc_intervals(
-        N_data_binned, S_template, B_template, sig_grid, bkg_grid, 
-        n_toys=200, cl=0.90, strategy="scipy", num_cores=4, verbose=1,
-        likelihood_type="binned"
-    )
-    
-    accepted_sigs_binned = fc_results_binned["test_sig"][fc_results_binned["accepted"]]
-    if len(accepted_sigs_binned) > 0:
-        print(f"\nResult (Binned): 90% C.L. Interval for Signal Scale: [{accepted_sigs_binned[0]:.2f}, {accepted_sigs_binned[-1]:.2f}]")
-    else:
-        print("\nResult (Binned): No parameters accepted.")
-    
-    # ---------------------------------------------------------
-    # Example B: New UNBINNED Analysis (using UHE mock setup)
-    # ---------------------------------------------------------
-    print("\n--- Running UNBINNED Analysis Example ---")
-    
-    # Mocking simple 1D PDF functions (e.g., energy distributions)
-    # Using scipy.stats for quick mockup, but interpolators will work exactly the same
-    from scipy.stats import norm, expon
-    
-    # PDF callables returning probability densities
-    def s_pdf_mock(x): return norm.pdf(x, loc=5.0, scale=1.0)
-    def b_pdf_mock(x): return expon.pdf(x, scale=2.0)
-    
-    # Mock Raw MC Pools for Bootstrapping (representing thousands of simulated events)
-    s_mc_pool = np.random.normal(loc=5.0, scale=1.0, size=5000)
-    b_mc_pool = np.random.exponential(scale=2.0, size=5000)
-    
-    # Mock Observed Detector Data (Extreme low stats: 2 sig, 3 bkg events)
-    unbinned_data = np.concatenate([
-        np.random.choice(s_mc_pool, size=2),
-        np.random.choice(b_mc_pool, size=3)
-    ])
-    print(f"Mock Observed Unbinned Events: {np.round(unbinned_data, 2)}")
-    
-    fc_results_unbinned = compute_fc_intervals(
-        unbinned_data, s_pdf_mock, b_pdf_mock, 
-        sig_test_points=sig_grid, bkg_grid=bkg_grid, 
-        n_toys=200, cl=0.90, strategy="scipy", num_cores=4, verbose=1,
-        sparsify_grid=True, adaptive_toys=True, warm_start=True,
-        likelihood_type="unbinned", 
-        S_mc_pool=s_mc_pool, B_mc_pool=b_mc_pool
-    )
-    
-    accepted_sigs = fc_results_unbinned["test_sig"][fc_results_unbinned["accepted"]]
-    if len(accepted_sigs) > 0:
-        print(f"\nResult (Unbinned): 90% C.L. Interval for Signal Scale: [{accepted_sigs[0]:.2f}, {accepted_sigs[-1]:.2f}]")
-    else:
-        print("\nResult (Unbinned): No parameters accepted.")
+    if config["likelihood_type"] == "binned":
+        print("\n--- Running BINNED Analysis Example ---")
+        S_template = np.array([0.1, 0.5, 2.0, 5.0])
+        B_template = np.array([15.0, 5.0, 1.0, 0.1])
+        
+        np.random.seed(42)
+        N_data_binned = np.random.poisson(1.0 * S_template + 1.0 * B_template)
+        print(f"Mock Observed Data (Binned Counts): {N_data_binned}")
+        
+        fc_results = compute_fc_intervals(
+            N_data_binned, S_template, B_template, sig_grid, bkg_grid, 
+            cl=config["cl"], n_toys=config["n_toys"], strategy=config["strategy"], 
+            num_cores=config["num_cores"], verbose=config["verbose"],
+            adaptive_toys=config["adaptive_toys"], toy_batch_size=config["toy_batch_size"],
+            sparsify_grid=config["sparsify_grid"], warm_start=config["warm_start"],
+            likelihood_type="binned",
+            output_file=config["output_file"], save_log=config["save_log"]
+        )
+        
+        for c in config["cl"]:
+            accepted_sigs = fc_results["test_sig"][fc_results["accepted"][c]]
+            if len(accepted_sigs) > 0:
+                print(f"Result (Binned) [{c} C.L.]: [{accepted_sigs[0]:.2f}, {accepted_sigs[-1]:.2f}]")
+            else:
+                print(f"Result (Binned) [{c} C.L.]: No parameters accepted.")
+
+    elif config["likelihood_type"] == "unbinned":
+        print("\n--- Running UNBINNED Analysis Example ---")
+        from scipy.stats import norm, expon
+        
+        def s_pdf_mock(x): return norm.pdf(x, loc=5.0, scale=1.0)
+        def b_pdf_mock(x): return expon.pdf(x, scale=2.0)
+        
+        s_mc_pool = np.random.normal(loc=5.0, scale=1.0, size=5000)
+        b_mc_pool = np.random.exponential(scale=2.0, size=5000)
+        
+        unbinned_data = np.concatenate([
+            np.random.choice(s_mc_pool, size=2),
+            np.random.choice(b_mc_pool, size=3)
+        ])
+        print(f"Mock Observed Unbinned Events: {np.round(unbinned_data, 2)}")
+        
+        fc_results = compute_fc_intervals(
+            unbinned_data, s_pdf_mock, b_pdf_mock, 
+            sig_test_points=sig_grid, bkg_grid=bkg_grid, 
+            cl=config["cl"], n_toys=config["n_toys"], strategy=config["strategy"], 
+            num_cores=config["num_cores"], verbose=config["verbose"],
+            adaptive_toys=config["adaptive_toys"], toy_batch_size=config["toy_batch_size"],
+            sparsify_grid=config["sparsify_grid"], warm_start=config["warm_start"],
+            likelihood_type="unbinned", S_mc_pool=s_mc_pool, B_mc_pool=b_mc_pool,
+            output_file=config["output_file"], save_log=config["save_log"]
+        )
+        
+        for c in config["cl"]:
+            accepted_sigs = fc_results["test_sig"][fc_results["accepted"][c]]
+            if len(accepted_sigs) > 0:
+                print(f"Result (Unbinned) [{c} C.L.]: [{accepted_sigs[0]:.2f}, {accepted_sigs[-1]:.2f}]")
+            else:
+                print(f"Result (Unbinned) [{c} C.L.]: No parameters accepted.")
