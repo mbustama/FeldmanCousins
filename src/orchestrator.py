@@ -2,6 +2,7 @@ import numpy as np
 import itertools
 import logging
 import os
+import json
 
 # --- Module Imports ---
 from config import parse_arguments
@@ -39,6 +40,20 @@ except ImportError:
         return iterable
 
 
+class NumpyEncoder(json.JSONEncoder):
+    """Custom encoder to serialize NumPy arrays, floats, ints, and booleans to JSON."""
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, (np.float32, np.float64, float)):
+            return float(obj)
+        if isinstance(obj, (np.int32, np.int64, int)):
+            return int(obj)
+        if isinstance(obj, (np.bool_, bool)):
+            return bool(obj)
+        return super().default(obj)
+
+
 def _save_fc_archive(results, grids, output_path, cl, compute_1D_intervals, compute_2D_intervals, n_params):
     """Unified function to serialize the FC environment state."""
     save_dict = {
@@ -71,6 +86,50 @@ def _save_fc_archive(results, grids, output_path, cl, compute_1D_intervals, comp
                 save_dict[f"2d_accepted_{pair_name}_{c}"] = results[f"2d_accepted_{pair_name}"][c]
                 
     np.savez(output_path, **save_dict)
+
+
+def _save_fc_json(results, output_path, cl, compute_1D_intervals, compute_2D_intervals, n_params):
+    """Exports computed 1D and 2D intervals to an external JSON file conditionally."""
+    json_dict = {
+        "best_fit": results["best_fit"],
+        "data_uncond_nll": results.get("data_uncond_nll", None)
+    }
+    
+    if compute_1D_intervals:
+        json_dict["1d_intervals"] = {}
+        for p_idx in range(n_params):
+            p_key = f"param{p_idx+1}"
+            json_dict["1d_intervals"][p_key] = {
+                "test_points": results.get(f"1d_test_p{p_idx+1}"),
+                "t_data": results.get(f"1d_t_data_p{p_idx+1}"),
+                "prof_params": results.get(f"1d_prof_params_p{p_idx+1}"),
+                "thresholds": {}
+            }
+            for c in cl:
+                json_dict["1d_intervals"][p_key]["thresholds"][str(c)] = {
+                    "t_critical": results[f"1d_t_critical_p{p_idx+1}"][c],
+                    "accepted": results[f"1d_accepted_p{p_idx+1}"][c]
+                }
+
+    if compute_2D_intervals and n_params > 1:
+        json_dict["2d_intervals"] = {}
+        pairs = list(itertools.combinations(range(n_params), 2))
+        for fix_A, fix_B in pairs:
+            pair_name = f"p{fix_A+1}p{fix_B+1}"
+            json_dict["2d_intervals"][pair_name] = {
+                f"test_p{fix_A+1}": results.get(f"2d_test_p{fix_A+1}_{pair_name}"),
+                f"test_p{fix_B+1}": results.get(f"2d_test_p{fix_B+1}_{pair_name}"),
+                "t_data": results.get(f"2d_t_data_{pair_name}"),
+                "thresholds": {}
+            }
+            for c in cl:
+                json_dict["2d_intervals"][pair_name]["thresholds"][str(c)] = {
+                    "t_critical": results[f"2d_t_critical_{pair_name}"][c],
+                    "accepted": results[f"2d_accepted_{pair_name}"][c]
+                }
+
+    with open(output_path, 'w') as f:
+        json.dump(json_dict, f, cls=NumpyEncoder, indent=4)
 
 
 def compute_fc_intervals(data, S_model, B_model, grids, 
@@ -383,8 +442,10 @@ def compute_fc_intervals(data, S_model, B_model, grids,
     # --- Structural Archiving & Cleanup Operations ---
     if output_file is not None:
         final_path = os.path.join(save_directory, f"{output_file}.npz")
+        final_path_json = os.path.join(save_directory, f"{output_file}.json")
         _save_fc_archive(results, grids, final_path, cl, compute_1D_intervals, compute_2D_intervals, n_params)
-        log_print(f"Results archived completely to storage matrix {final_path}")
+        _save_fc_json(results, final_path_json, cl, compute_1D_intervals, compute_2D_intervals, n_params)
+        log_print(f"Results archived completely to storage matrix {final_path} and JSON {final_path_json}")
         
         # Eliminate interim files
         if os.path.exists(ckpt_path):
