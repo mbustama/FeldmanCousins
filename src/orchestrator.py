@@ -47,10 +47,11 @@ except ImportError:
 
 
 # --- 1. Scipy Continuous Optimizers (Branched for Binned/Unbinned) ---
-def unconditional_fit_scipy(data, S_model, B_model, sig_bounds, bkg_bounds, seed=None, likelihood_type="binned"):
+def unconditional_fit_scipy(data, S_model, B_model, sig_bounds, bkg_bounds, seed=None, 
+                            likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False):
     def cost(params):
         if likelihood_type == "binned":
-            return calc_nll(params[0], params[1], data, S_model, B_model)
+            return calc_nll(params[0], params[1], data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc)
         else:
             return calc_nll_unbinned(params[0], params[1], data, S_model, B_model)
     
@@ -58,10 +59,11 @@ def unconditional_fit_scipy(data, S_model, B_model, sig_bounds, bkg_bounds, seed
     res = optimize.minimize(cost, x0=x0, bounds=[sig_bounds, bkg_bounds], method='L-BFGS-B')
     return res.fun, res.x[0], res.x[1]
 
-def conditional_fit_scipy(test_sig, data, S_model, B_model, bkg_bounds, seed=None, likelihood_type="binned"):
+def conditional_fit_scipy(test_sig, data, S_model, B_model, bkg_bounds, seed=None, 
+                          likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False):
     def cost(bkg):
         if likelihood_type == "binned":
-            return calc_nll(test_sig, bkg[0], data, S_model, B_model)
+            return calc_nll(test_sig, bkg[0], data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc)
         else:
             return calc_nll_unbinned(test_sig, bkg[0], data, S_model, B_model)
         
@@ -71,7 +73,8 @@ def conditional_fit_scipy(test_sig, data, S_model, B_model, bkg_bounds, seed=Non
 
 
 # --- 2. UltraNest Optimizers (Branched for Binned/Unbinned) ---
-def unconditional_fit_ultranest(data, S_model, B_model, sig_bounds, bkg_bounds, verbose=1, likelihood_type="binned"):
+def unconditional_fit_ultranest(data, S_model, B_model, sig_bounds, bkg_bounds, verbose=1, 
+                                likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False):
     def prior_transform(cube):
         sig = cube[0] * (sig_bounds[1] - sig_bounds[0]) + sig_bounds[0]
         bkg = cube[1] * (bkg_bounds[1] - bkg_bounds[0]) + bkg_bounds[0]
@@ -79,7 +82,7 @@ def unconditional_fit_ultranest(data, S_model, B_model, sig_bounds, bkg_bounds, 
 
     def log_likelihood(params):
         if likelihood_type == "binned":
-            return -calc_nll(params[0], params[1], data, S_model, B_model)
+            return -calc_nll(params[0], params[1], data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc)
         else:
             return -calc_nll_unbinned(params[0], params[1], data, S_model, B_model)
 
@@ -95,14 +98,15 @@ def unconditional_fit_ultranest(data, S_model, B_model, sig_bounds, bkg_bounds, 
     min_nll = -result['maximum_likelihood']['logl']
     return min_nll, best_sig, best_bkg
 
-def conditional_fit_ultranest(test_sig, data, S_model, B_model, bkg_bounds, verbose=1, likelihood_type="binned"):
+def conditional_fit_ultranest(test_sig, data, S_model, B_model, bkg_bounds, verbose=1, 
+                              likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False):
     def prior_transform(cube):
         bkg = cube[0] * (bkg_bounds[1] - bkg_bounds[0]) + bkg_bounds[0]
         return np.array([bkg])
 
     def log_likelihood(params):
         if likelihood_type == "binned":
-            return -calc_nll(test_sig, params[0], data, S_model, B_model)
+            return -calc_nll(test_sig, params[0], data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc)
         else:
             return -calc_nll_unbinned(test_sig, params[0], data, S_model, B_model)
 
@@ -122,7 +126,8 @@ def conditional_fit_ultranest(test_sig, data, S_model, B_model, bkg_bounds, verb
 # --- 3. Python Vectorized Toy Generator ---
 def generate_and_fit_toys_python(test_sig, profiled_bkg, S_model, B_model, 
                                  sig_bounds, bkg_bounds, n_toys, strategy, num_cores=None, verbose=1,
-                                 likelihood_type="binned", S_mc_pool=None, B_mc_pool=None):
+                                 likelihood_type="binned", S_mc_pool=None, B_mc_pool=None,
+                                 S_sigma2=None, B_sigma2=None, use_finite_mc=False):
     """Handles threaded generation & fitting for both Binned and Unbinned schemas."""
     toys_binned_data = None
     if likelihood_type == "binned":
@@ -138,11 +143,15 @@ def generate_and_fit_toys_python(test_sig, profiled_bkg, S_model, B_model,
         if strategy == "scipy" or strategy == "hybrid":
             seed_u = [test_sig, profiled_bkg]
             seed_c = profiled_bkg
-            uncond_nll, _, _ = unconditional_fit_scipy(toy_data, S_model, B_model, sig_bounds, bkg_bounds, seed=seed_u, likelihood_type=likelihood_type)
-            cond_nll, _ = conditional_fit_scipy(test_sig, toy_data, S_model, B_model, bkg_bounds, seed=seed_c, likelihood_type=likelihood_type)
+            uncond_nll, _, _ = unconditional_fit_scipy(toy_data, S_model, B_model, sig_bounds, bkg_bounds, seed=seed_u, 
+                                                       likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc)
+            cond_nll, _ = conditional_fit_scipy(test_sig, toy_data, S_model, B_model, bkg_bounds, seed=seed_c, 
+                                                likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc)
         elif strategy == "ultranest":
-            uncond_nll, _, _ = unconditional_fit_ultranest(toy_data, S_model, B_model, sig_bounds, bkg_bounds, verbose=0, likelihood_type=likelihood_type)
-            cond_nll, _ = conditional_fit_ultranest(test_sig, toy_data, S_model, B_model, bkg_bounds, verbose=0, likelihood_type=likelihood_type)
+            uncond_nll, _, _ = unconditional_fit_ultranest(toy_data, S_model, B_model, sig_bounds, bkg_bounds, verbose=0, 
+                                                           likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc)
+            cond_nll, _ = conditional_fit_ultranest(test_sig, toy_data, S_model, B_model, bkg_bounds, verbose=0, 
+                                                    likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc)
             
         return max(0.0, cond_nll - uncond_nll)
 
@@ -159,7 +168,8 @@ def compute_fc_intervals(data, S_model, B_model,
                          adaptive_toys=True, toy_batch_size=200, 
                          sparsify_grid=True, warm_start=True,
                          likelihood_type="binned", S_mc_pool=None, B_mc_pool=None,
-                         output_file=None, save_log=False):
+                         output_file=None, save_log=False,
+                         use_finite_mc_correction_binned=True, S_sigma2=None, B_sigma2=None):
     """
     Orchestrates the Feldman-Cousins construction.
     Supports Likelihoods: 'binned' or 'unbinned'.
@@ -176,7 +186,6 @@ def compute_fc_intervals(data, S_model, B_model,
         if verbose > 0: print(msg)
         if save_log: run_logger.info(msg)
 
-    # Standardize CL to list
     if isinstance(cl, (float, int)):
         cl = [float(cl)]
 
@@ -203,11 +212,20 @@ def compute_fc_intervals(data, S_model, B_model,
 
     if NUMBA_AVAILABLE and num_cores is not None:
         set_num_threads(num_cores)
+        
+    # Safeguard binned variance matrices if not provided
+    if likelihood_type == "binned":
+        if S_sigma2 is None: S_sigma2 = np.zeros_like(S_model)
+        if B_sigma2 is None: B_sigma2 = np.zeros_like(B_model)
+    else:
+        S_sigma2, B_sigma2 = None, None
 
     log_print(f"Starting FC Construction: {len(sig_test_points)} test points, up to {n_toys} toys/point.")
     log_print(f"Confidence Levels: {cl}")
     log_print(f"Schema: {likelihood_type.upper()} | Strategy: {strategy.upper()} (Cores: {num_cores if num_cores else 'Max'})")
     log_print(f"Optimizations -> Warm Start: {warm_start}, Adaptive Toys: {adaptive_toys}, Grid Sparsification: {sparsify_grid}")
+    if likelihood_type == "binned":
+        log_print(f"Finite MC Correction: {use_finite_mc_correction_binned}")
     
     results = {
         "test_sig": sig_test_points,
@@ -225,13 +243,13 @@ def compute_fc_intervals(data, S_model, B_model,
     # --- Fit unconditional data ONCE ---
     if strategy == "grid":
         if likelihood_type == "binned":
-            data_uncond_nll, _, _ = unconditional_fit_grid(data, S_model, B_model, sig_grid, bkg_grid)
+            data_uncond_nll, _, _ = unconditional_fit_grid(data, S_model, B_model, sig_grid, bkg_grid, S_sigma2, B_sigma2, use_finite_mc_correction_binned)
         else:
             data_uncond_nll, _, _ = unconditional_fit_grid_unbinned(data, S_model, B_model, sig_grid, bkg_grid)
     elif strategy in ["ultranest", "hybrid"]:
-        data_uncond_nll, _, _ = unconditional_fit_ultranest(data, S_model, B_model, sig_bounds, bkg_bounds, verbose, likelihood_type)
+        data_uncond_nll, _, _ = unconditional_fit_ultranest(data, S_model, B_model, sig_bounds, bkg_bounds, verbose, likelihood_type, S_sigma2, B_sigma2, use_finite_mc_correction_binned)
     elif strategy == "scipy":
-        data_uncond_nll, _, _ = unconditional_fit_scipy(data, S_model, B_model, sig_bounds, bkg_bounds, likelihood_type=likelihood_type)
+        data_uncond_nll, _, _ = unconditional_fit_scipy(data, S_model, B_model, sig_bounds, bkg_bounds, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
     
     # --- PHASE 1: Fit Data across Grid ---
     last_bkg_seed = None
@@ -241,14 +259,14 @@ def compute_fc_intervals(data, S_model, B_model,
         
         if strategy == "grid":
             if likelihood_type == "binned":
-                data_cond_nll, bkg_data = conditional_fit_grid(test_sig, data, S_model, B_model, bkg_grid)
+                data_cond_nll, bkg_data = conditional_fit_grid(test_sig, data, S_model, B_model, bkg_grid, S_sigma2, B_sigma2, use_finite_mc_correction_binned)
             else:
                 data_cond_nll, bkg_data = conditional_fit_grid_unbinned(test_sig, data, S_model, B_model, bkg_grid)
         elif strategy in ["ultranest", "hybrid"]:
-            data_cond_nll, bkg_data = conditional_fit_ultranest(test_sig, data, S_model, B_model, bkg_bounds, verbose, likelihood_type)
+            data_cond_nll, bkg_data = conditional_fit_ultranest(test_sig, data, S_model, B_model, bkg_bounds, verbose, likelihood_type, S_sigma2, B_sigma2, use_finite_mc_correction_binned)
         elif strategy == "scipy":
             seed_val = last_bkg_seed if warm_start and last_bkg_seed is not None else None
-            data_cond_nll, bkg_data = conditional_fit_scipy(test_sig, data, S_model, B_model, bkg_bounds, seed=seed_val, likelihood_type=likelihood_type)
+            data_cond_nll, bkg_data = conditional_fit_scipy(test_sig, data, S_model, B_model, bkg_bounds, seed=seed_val, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
             
         results["profiled_bkg"][i] = bkg_data
         results["t_data"][i] = max(0.0, data_cond_nll - data_uncond_nll)
@@ -270,11 +288,11 @@ def compute_fc_intervals(data, S_model, B_model,
                 batch = min(toy_batch_size, n_toys - toys_done)
                 if strategy == "grid":
                     if likelihood_type == "binned":
-                        batch_stats = generate_and_fit_toys_grid(test_sig, bkg_data, S_model, B_model, sig_grid, bkg_grid, batch)
+                        batch_stats = generate_and_fit_toys_grid(test_sig, bkg_data, S_model, B_model, sig_grid, bkg_grid, batch, S_sigma2, B_sigma2, use_finite_mc_correction_binned)
                     else:
                         batch_stats = generate_and_fit_toys_grid_unbinned(test_sig, bkg_data, S_model, B_model, sig_grid, bkg_grid, batch, S_mc_pool, B_mc_pool)
                 else:
-                    batch_stats = generate_and_fit_toys_python(test_sig, bkg_data, S_model, B_model, sig_bounds, bkg_bounds, batch, strategy, num_cores, verbose=0, likelihood_type=likelihood_type, S_mc_pool=S_mc_pool, B_mc_pool=B_mc_pool)
+                    batch_stats = generate_and_fit_toys_python(test_sig, bkg_data, S_model, B_model, sig_bounds, bkg_bounds, batch, strategy, num_cores, verbose=0, likelihood_type=likelihood_type, S_mc_pool=S_mc_pool, B_mc_pool=B_mc_pool, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
                 
                 t_stats.extend(batch_stats)
                 toys_done += batch
@@ -282,7 +300,6 @@ def compute_fc_intervals(data, S_model, B_model,
                 k = sum(1 for t in t_stats if t >= data_t)
                 toys_rem = n_toys - toys_done
                 
-                # Check if EVERY requested CL is definitively resolved by current bounds
                 all_resolved = True
                 for c in cl:
                     req = n_toys - min(int(c * n_toys), n_toys - 1)
@@ -306,11 +323,11 @@ def compute_fc_intervals(data, S_model, B_model,
         else:
             if strategy == "grid":
                 if likelihood_type == "binned":
-                    toy_t_stats = generate_and_fit_toys_grid(test_sig, bkg_data, S_model, B_model, sig_grid, bkg_grid, n_toys)
+                    toy_t_stats = generate_and_fit_toys_grid(test_sig, bkg_data, S_model, B_model, sig_grid, bkg_grid, n_toys, S_sigma2, B_sigma2, use_finite_mc_correction_binned)
                 else:
                     toy_t_stats = generate_and_fit_toys_grid_unbinned(test_sig, bkg_data, S_model, B_model, sig_grid, bkg_grid, n_toys, S_mc_pool, B_mc_pool)
             else:
-                toy_t_stats = generate_and_fit_toys_python(test_sig, bkg_data, S_model, B_model, sig_bounds, bkg_bounds, n_toys, strategy, num_cores, verbose=0, likelihood_type=likelihood_type, S_mc_pool=S_mc_pool, B_mc_pool=B_mc_pool)
+                toy_t_stats = generate_and_fit_toys_python(test_sig, bkg_data, S_model, B_model, sig_bounds, bkg_bounds, n_toys, strategy, num_cores, verbose=0, likelihood_type=likelihood_type, S_mc_pool=S_mc_pool, B_mc_pool=B_mc_pool, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
             toy_t_stats.sort()
             for c in cl:
                 results["t_critical"][c][idx] = toy_t_stats[min(int(c * n_toys), n_toys - 1)]
@@ -389,7 +406,8 @@ def generate_sample_config(filename="fc_config.json"):
         "sparsify_grid": True,
         "warm_start": True,
         "output_file": None,
-        "save_log": False
+        "save_log": False,
+        "use_finite_mc_correction_binned": True
     }
     with open(filename, 'w') as f:
         json.dump(default_config, f, indent=4)
@@ -399,7 +417,6 @@ def parse_arguments():
     """Parses hierarchy: Defaults -> JSON Config File -> CLI Arguments"""
     parser = argparse.ArgumentParser(description="Feldman-Cousins Confidence Intervals")
     
-    # Using argparse.SUPPRESS ensures the args dictionary ONLY contains variables the user actively typed
     parser.add_argument('--config_file', type=str, help="Path to JSON config file", default=argparse.SUPPRESS)
     parser.add_argument('--generate_config', action='store_true', help="Generate a sample JSON config and exit")
     
@@ -415,6 +432,7 @@ def parse_arguments():
     parser.add_argument('--warm_start', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
     parser.add_argument('--output_file', type=str, default=argparse.SUPPRESS)
     parser.add_argument('--save_log', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
+    parser.add_argument('--use_finite_mc_correction_binned', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
     
     args = parser.parse_args()
     
@@ -435,7 +453,8 @@ def parse_arguments():
         "sparsify_grid": True,
         "warm_start": True,
         "output_file": None,
-        "save_log": False
+        "save_log": False,
+        "use_finite_mc_correction_binned": True
     }
     
     # 1. Update with values from JSON Config File (if provided)
@@ -469,6 +488,10 @@ if __name__ == "__main__":
         S_template = np.array([0.1, 0.5, 2.0, 5.0])
         B_template = np.array([15.0, 5.0, 1.0, 0.1])
         
+        # Simulating variance matrices (e.g. unweighted MC where sigma^2 == mu)
+        S_sigma2 = S_template.copy() 
+        B_sigma2 = B_template.copy()
+        
         np.random.seed(42)
         N_data_binned = np.random.poisson(1.0 * S_template + 1.0 * B_template)
         print(f"Mock Observed Data (Binned Counts): {N_data_binned}")
@@ -480,7 +503,9 @@ if __name__ == "__main__":
             adaptive_toys=config["adaptive_toys"], toy_batch_size=config["toy_batch_size"],
             sparsify_grid=config["sparsify_grid"], warm_start=config["warm_start"],
             likelihood_type="binned",
-            output_file=config["output_file"], save_log=config["save_log"]
+            output_file=config["output_file"], save_log=config["save_log"],
+            use_finite_mc_correction_binned=config["use_finite_mc_correction_binned"],
+            S_sigma2=S_sigma2, B_sigma2=B_sigma2
         )
         
         for c in config["cl"]:
