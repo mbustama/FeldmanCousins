@@ -6,7 +6,7 @@
     ],
     "n_toys": 200,
     "strategy": "scipy",
-    "num_cores": 4,
+    "num_cores": 8,
     "verbose": 1,
     "adaptive_toys": true,
     "toy_batch_size": 200,
