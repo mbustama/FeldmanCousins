@@ -10,7 +10,7 @@ def generate_sample_config(filename="../config/example_fc_config.json"):
         "cl": [0.68, 0.90],
         "n_toys": 200,
         "strategy": "scipy",
-        "num_cores": 4,
+        "num_cores": 8,
         "verbose": 1,
         "adaptive_toys": True,
         "toy_batch_size": 200,
