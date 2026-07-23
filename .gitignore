@@ -2,6 +2,7 @@ bin/
 lib/
 obj/
 .ipynb_checkpoints/
+PyFC.egg-info/
 **/__pycache__
 *.pyc
 *.csv
