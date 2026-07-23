@@ -1,0 +1,28 @@
+{
+    "likelihood_type": "binned",
+    "cl": [
+        0.68,
+        0.9
+    ],
+    "n_toys": 200,
+    "strategy": "scipy",
+    "num_cores": 4,
+    "verbose": 1,
+    "adaptive_toys": true,
+    "toy_batch_size": 200,
+    "sparsify_grid": true,
+    "warm_start": true,
+    "output_file": "fc_results",
+    "save_log": true,
+    "save_directory": "../output/example_fc_output",
+    "use_finite_mc_correction_binned": true,
+    "compute_1D_intervals": true,
+    "compute_2D_intervals": true,
+    "param_names": [
+        "param1",
+        "param2",
+        "param3"
+    ],
+    "smooth_1d": false,
+    "smooth_2d": false
+}
