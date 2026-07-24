@@ -71,21 +71,20 @@ The project structure is organized modularly to separate analytical likelihood m
 
 ```text
 FeldmanCousins/
-├── pyproject.toml         # Build system and dependency specifications
-├── README.md              # Project documentation
-├── examples/              # Full end-to-end scripts for binned/unbinned workflows
-├── tests/                 # Unit and integration test suite
-└── src/
-    └── pyfc/
-        ├── __init__.py          # Package initialization and metadata
-        ├── binned.py            # Binned NLL math and Numba-accelerated optimizers
-        ├── config.py            # CLI argument definitions and JSON parsing
-        ├── generate_config.py   # Interactive CLI wizard for creating fc_config.json
-        ├── optimizers.py        # Wrapper functions mapping objective functions to SciPy/UltraNest
-        ├── orchestrator.py      # The main pipeline executing the Feldman-Cousins algorithm
-        ├── plotting.py          # Visualization suite for 1D profiles and 2D contours
-        ├── toys.py              # Multiprocessing engines for MC pseudo-experiment generation
-        └── unbinned.py          # Extended Unbinned Maximum Likelihood (EUML) formulations
+├── pyproject.toml           # Build system and dependency specifications
+├── README.md                # Project documentation
+├── examples/                # Full end-to-end scripts for binned/unbinned workflows
+├── tests/                   # Unit and integration test suite
+└── pyfc/
+    ├── __init__.py          # Package initialization and metadata
+    ├── binned.py            # Binned NLL math and Numba-accelerated optimizers
+    ├── config.py            # CLI argument definitions and JSON parsing
+    ├── generate_config.py   # Interactive CLI wizard for creating fc_config.json
+    ├── optimizers.py        # Wrapper functions mapping objective functions to SciPy/UltraNest
+    ├── orchestrator.py      # The main pipeline executing the Feldman-Cousins algorithm
+    ├── plotting.py          # Visualization suite for 1D profiles and 2D contours
+    ├── toys.py              # Multiprocessing engines for MC pseudo-experiment generation
+    └── unbinned.py          # Extended Unbinned Maximum Likelihood (EUML) formulations
 ```
 
 ---
