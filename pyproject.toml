@@ -7,9 +7,10 @@ name = "PyFC"
 version = "0.1.0"
 description = "A modular framework for Feldman-Cousins confidence interval calculations."
 dependencies = [
-    "numpy",
+    "numpy>=1.20",
     "scipy",
-    "matplotlib"
+    "matplotlib",
+    "numba"
 ]
 
 [project.optional-dependencies]
