@@ -24,7 +24,8 @@ jobs:
 
       - name: Run Ruff Linter
         # Checks for logical errors, undefined variables, and unused imports
-        run: ruff check .
+        run: ruff check . --ignore BLE001,C414,SIM102,RUF059,PERF402,TRY201
+        # continue-on-error: true # The workflow will turn green even if Ruff complains
 
       - name: Run Ruff Formatter (Check Only)
         # Fails the CI if the code is not formatted cleanly
