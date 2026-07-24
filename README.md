@@ -60,7 +60,8 @@ pip install -e .
 ```
 
 ### Verifying the Installation
-After installing the package, you can run the test suite to ensure everything is configured correctly for your system architecture, including specific optimizer boundary checks.
+
+After installing the package, you can run the local test suite to ensure everything is configured correctly for your system architecture. We utilize `pytest` to validate statistical correctness, optimizer behavior, and parallelization scaling. 
 
 ```bash
 # Install the testing framework
@@ -69,6 +70,17 @@ pip install pytest
 # Run the test suite from the repository root
 pytest tests/ -v
 ```
+### Continuous Integration (CI)
+
+PyFC is protected by a Continuous Integration (CI) pipeline powered by GitHub Actions. Every time code is pushed or a Pull Request is opened, the CI automatically provisions pristine Ubuntu runners across a matrix of Python versions (e.g., 3.9, 3.10, 3.11). It installs PyFC entirely from scratch and executes the full test suite. This strict isolation eliminates "it works on my machine" biases and guarantees that new code contributions do not introduce regressions.
+
+The test suite executes the following verifications:
+* **Core imports & dependencies**: The suite validates that all framework modules can be imported successfully. It also checks that optional dependency flags for SciPy and UltraNest are correctly evaluated as booleans.
+* **I/O & checkpointing integrity**: The pipeline writes intermediate array states to a binary `.npz` checkpoint in a temporary directory. It then loads the file to assert that the arrays are perfectly reconstructed without data loss.
+* **Multiprocessing serialization**: To ensure safe HPC scaling, the test spawns a `ProcessPoolExecutor` to verify that top-level worker functions can be serialized across CPU cores without pickling errors. It validates that the isolated sub-processes return correct mathematical results.
+* **JIT compilation hooks**: The suite forces a simple Numba JIT compilation. This ensures that the host's LLVM compiler toolchain is properly installed and can execute `fastmath` and `nogil` directives.
+* **Optimizer boundary clamping**: The pipeline intentionally passes an optimizer seed that microscopically violates upper bound constraints. It verifies that the framework properly clamps the seed before SciPy throws a `ValueError`.
+* **Statistical Asimov convergence**: The optimizer is fed an Asimov dataset where the exact data explicitly matches the expected model. This verifies that the underlying likelihood geometry is constructed properly, as the minimizer must converge exactly on the known true parameters.
 
 ### Developer Installation
 If you plan to modify the codebase or contribute to the project, you should install the package with its optional testing and development dependencies included. This ensures you have tools like `pytest` ready to go without cluttering the requirements for standard users:
