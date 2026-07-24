@@ -7,14 +7,14 @@
 Designed for high-energy physics, astrophysics, and general parametric modeling, PyFC handles both binned (histogram) and unbinned (event-by-event) data, integrates multiple optimization strategies (SciPy, UltraNest, Grid), and utilizes highly parallelized Monte Carlo pseudo-experiment generation.
 
 ## Salient Features
-* **Unified Binned and Unbinned Analysis**: Natively supports Poisson binned data and Extended Unbinned Maximum Likelihood (EUML) formulations.
-* **Exact Coverage**: Empirically derives the Profile Likelihood Ratio (PLR) test statistic distribution via dynamically generated Monte Carlo pseudo-experiments (toys).
-* **Advanced Optimizers**: Supports gradient-based L-BFGS-B (SciPy), nested sampling (UltraNest), and brute-force grid scanning.
-* **Massive Parallelization**: GIL-bypassing via NumPy/Numba C-extensions for binned thread pooling, and `ProcessPoolExecutor` for unbinned continuous functions.
-* **Finite Monte Carlo Corrections**: Implements the Beeston-Barlow technique, modeling templates as Poisson-Gamma mixtures to account for finite simulation statistics.
-* **Dynamic 2D Sparsification**: Employs Bivariate Spline interpolation and edge-tracing algorithms to skip unnecessary toy generation inside or outside 2D contours, radically reducing computational overhead.
-* **State Checkpointing**: "Warm start" capability saves binary state matrices periodically to prevent data loss on cluster preemptions.
-* **Interactive Configuration**: Built-in CLI for generating serialized JSON experiment configurations.
+* **Unified binned and unbinned analysis**: Natively supports Poisson binned data and Extended Unbinned Maximum Likelihood (EUML) formulations.
+* **Exact coverage**: Empirically derives the Profile Likelihood Ratio (PLR) test statistic distribution via dynamically generated Monte Carlo pseudo-experiments (toys).
+* **Advanced optimizers**: Supports gradient-based L-BFGS-B (SciPy), nested sampling (UltraNest), and brute-force grid scanning.
+* **Massive parallelization**: GIL-bypassing via NumPy/Numba C-extensions for binned thread pooling, and `ProcessPoolExecutor` for unbinned continuous functions.
+* **Finite Monte Carlo corrections**: Implements the Beeston-Barlow technique, modeling templates as Poisson-Gamma mixtures to account for finite simulation statistics.
+* **Dynamic 2D sparsification**: Employs Bivariate Spline interpolation and edge-tracing algorithms to skip unnecessary toy generation inside or outside 2D contours, radically reducing computational overhead.
+* **State checkpointing**: "Warm start" capability saves binary state matrices periodically to prevent data loss on cluster preemptions.
+* **Interactive configuration**: Built-in CLI for generating serialized JSON experiment configurations.
 
 ---
 
