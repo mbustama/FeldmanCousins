@@ -1,9 +1,10 @@
 """
 Tests for unbinned execution and multi-processing concurrency.
 """
-import numpy as np
 import concurrent.futures
-import pytest
+
+import numpy as np
+
 
 # Note: The worker function MUST be defined at the top-level of the module.
 # If it is nested inside the test function, ProcessPoolExecutor will raise 

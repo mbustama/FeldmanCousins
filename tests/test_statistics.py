@@ -4,7 +4,9 @@ Tests for statistical correctness and likelihood behavior.
 import numpy as np
 import pytest
 from numba import njit
-from pyfc.optimizers import unconditional_fit_scipy, SCIPY_AVAILABLE
+
+from pyfc.optimizers import SCIPY_AVAILABLE, unconditional_fit_scipy
+
 
 @pytest.mark.skipif(not SCIPY_AVAILABLE, reason="SciPy is required for this test")
 def test_asimov_treatment_convergence():

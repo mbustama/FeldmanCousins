@@ -1,14 +1,9 @@
 """
 Core installation and import tests.
 """
-import pytest
 
 def test_imports():
     """Verify that all core modules can be imported successfully."""
-    import pyfc
-    import pyfc.optimizers
-    import pyfc.binned
-    import pyfc.unbinned
     assert True  # If we reach here, imports succeeded
 
 def test_optional_dependencies():

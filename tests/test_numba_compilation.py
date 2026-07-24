@@ -3,7 +3,7 @@ Tests to ensure Numba JIT compilation executes correctly on the host architectur
 """
 import numpy as np
 from numba import njit
-import pytest
+
 
 def test_numba_jit_compilation():
     """

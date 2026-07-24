@@ -2,8 +2,10 @@
 Tests for File I/O and checkpoint recovery mechanisms.
 """
 import os
-import numpy as np
 import tempfile
+
+import numpy as np
+
 
 def test_checkpoint_read_write():
     """

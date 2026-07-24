@@ -8,6 +8,7 @@
 
 import os
 import sys
+
 # Tell Sphinx where to find your Python package
 sys.path.insert(0, os.path.abspath('../../'))
 
