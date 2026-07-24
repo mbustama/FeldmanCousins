@@ -1,6 +1,6 @@
 # PyFC: A Python Framework for Feldman-Cousins Confidence Intervals
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](#)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](#) [![CI Tests](https://github.com/mbustama/FeldmanCousins/actions/workflows/pytest.yml/badge.svg)](https://github.com/mbustama/FeldmanCousins/actions)
 
 **PyFC** is a rigorous, high-performance frequentist statistical analysis framework for Python. It automates the construction of classical confidence intervals and regions using the unified Feldman-Cousins approach, seamlessly transitioning between one-sided upper limits and two-sided bounds while guaranteeing exact frequentist coverage. 
 
@@ -86,6 +86,9 @@ The project structure is organized modularly to separate analytical likelihood m
 
 ```text
 FeldmanCousins/
+├── .github/
+│   └── workflows/
+│       └── pytest.yml       # GitHub Actions CI testing pipeline
 ├── pyproject.toml           # Build system and dependency specifications
 ├── README.md                # Project documentation
 ├── examples/                # Full end-to-end scripts for binned/unbinned workflows
@@ -462,7 +465,7 @@ A: Simply pass a `np.linspace()` grid for that parameter into the `grids` list. 
 We welcome contributions to PyFC, including bug reports, feature requests, and code modifications! 
 1. Open an issue on the GitHub repository to discuss the proposed change.
 2. Fork the repository and create a feature branch (`git checkout -b feature/new-optimizer`).
-3. Ensure all tests pass (`pytest tests/`) and code is fully documented.
+3. Ensure all tests pass (`pytest tests/`) and code is fully documented. Note that all Pull Requests must also pass the automated Continuous Integration (CI) pipeline via GitHub Actions before they can be merged.
 4. Submit a Pull Request.
 
 ---
