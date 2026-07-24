@@ -37,6 +37,8 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
 
 ## Installation & Requirements
 
+### Requirements
+
 PyFC requires **Python 3.8+**. Core dependencies include:
 * `numpy >= 1.20`
 * `scipy`
@@ -47,6 +49,8 @@ PyFC requires **Python 3.8+**. Core dependencies include:
 * `ultranest` (Required for utilizing the nested sampling optimizer)
 * `tqdm` (Provides progress bars during execution)
 
+### Installation
+
 Clone the repository and install via `pip` to automatically resolve and install all dependencies:
 
 ```bash
@@ -55,12 +59,23 @@ cd FeldmanCousins
 pip install -e .
 ```
 
-**Testing:**
-To verify that the installation was successful and the optimizers are functioning correctly on your hardware, run the test suite:
-    
+### Verifying the Installation
+After installing the package, you can run the test suite to ensure everything is configured correctly for your system architecture, including specific optimizer boundary checks.
+
 ```bash
+# Install the testing framework
 pip install pytest
-pytest tests/
+
+# Run the test suite from the repository root
+pytest tests/ -v
+```
+
+### Developer Installation
+If you plan to modify the codebase or contribute to the project, you should install the package with its optional testing and development dependencies included. This ensures you have tools like `pytest` ready to go without cluttering the requirements for standard users:
+
+```bash
+# The quote marks are important for some shells (like zsh)
+pip install -e ".[test]"
 ```
 
 ---
