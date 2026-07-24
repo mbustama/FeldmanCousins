@@ -17,10 +17,11 @@ This file was released as part of the PyFC code, stored at
 https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 License.
 """
 
-import json
 import argparse
-import sys
+import json
 import os
+import sys
+
 
 def generate_sample_config(filename="../config/example_fc_config.json"):
     """

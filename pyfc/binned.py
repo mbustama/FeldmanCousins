@@ -14,8 +14,9 @@ This file was released as part of the PyFC code, stored at
 https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 License.
 """
 
-import numpy as np
 import math
+
+import numpy as np
 
 # --- 1. Dynamic Dependency Injection for Binned Math ---
 try:

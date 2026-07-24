@@ -17,6 +17,7 @@ https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 Lice
 """
 
 import numpy as np
+
 from .binned import calc_nll
 from .unbinned import calc_nll_unbinned
 

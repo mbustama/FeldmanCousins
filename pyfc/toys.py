@@ -20,14 +20,20 @@ This file was released as part of the PyFC code, stored at
 https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 License.
 """
 
-import numpy as np
 import concurrent.futures
 import warnings
 
+import numpy as np
+
 from .optimizers import (
-    unconditional_fit_scipy, conditional_fit_1d_scipy, conditional_fit_2d_scipy,
-    unconditional_fit_ultranest, conditional_fit_1d_ultranest, conditional_fit_2d_ultranest
+    conditional_fit_1d_scipy,
+    conditional_fit_1d_ultranest,
+    conditional_fit_2d_scipy,
+    conditional_fit_2d_ultranest,
+    unconditional_fit_scipy,
+    unconditional_fit_ultranest,
 )
+
 
 def _worker_unbinned_toy(args):
     """
@@ -160,7 +166,6 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
             return np.array(t_stats)
         except Exception as e:
             warnings.warn(f"ProcessPoolExecutor failed. Falling back to ThreadPoolExecutor. Error: {e}")
-            pass
             
     # --- Branch 2: Binned Data (Thread-based parallelism) or Unbinned Fallback ---
     if likelihood_type == "binned":

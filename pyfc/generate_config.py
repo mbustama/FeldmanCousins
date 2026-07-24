@@ -40,6 +40,7 @@ https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 Lice
 import json
 import os
 
+
 def parse_bool(value):
     """
     Safely converts string inputs to boolean values.
@@ -177,7 +178,7 @@ def get_input(prompt_text, default_val, cast_func, choices=None, validator=None,
                 print(f"  -> Error: {error_msg}\n")
                 continue
 
-            print("") # Empty line for readability
+            print() # Empty line for readability
             return parsed_val
 
         except ValueError as e:
@@ -185,7 +186,7 @@ def get_input(prompt_text, default_val, cast_func, choices=None, validator=None,
             err_str = str(e) if str(e) else "Invalid data type provided."
             print(f"  -> Error: {err_str}\n")
         except Exception:
-            print(f"  -> Error: Invalid input format.\n")
+            print("  -> Error: Invalid input format.\n")
 
 def main():
     """

@@ -13,9 +13,10 @@ This file was released as part of the PyFC code, stored at
 https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 License.
 """
 
-import numpy as np
 import itertools
 import os
+
+import numpy as np
 
 try:
     import matplotlib.pyplot as plt
@@ -24,7 +25,7 @@ except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
 try:
-    from scipy.ndimage import gaussian_filter1d, gaussian_filter
+    from scipy.ndimage import gaussian_filter, gaussian_filter1d
     SCIPY_NDIMAGE_AVAILABLE = True
 except ImportError:
     SCIPY_NDIMAGE_AVAILABLE = False
@@ -39,7 +40,7 @@ def generate_corner_plot(results, config):
     curve represents the data test statistic ($t_{\text{data}}$), while the dashed 
     colored lines represent the exact critical thresholds ($t_{\text{critical}}$) 
     derived from Monte Carlo toys at specified Confidence Levels (CL). The shaded 
-    regions denote the accepted parameter intervals where $t_{\text{data}} \leq t_{\text{critical}}$.
+    regions denote the accepted parameter intervals where $t_{\text{data}} \\leq t_{\text{critical}}$.
     
     The off-diagonal axes display the 2D joint contours. The contours are drawn exactly 
     where the differential surface $z = t_{\text{data}} - t_{\text{critical}}$ crosses zero, 

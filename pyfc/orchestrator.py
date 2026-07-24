@@ -29,37 +29,43 @@ This file was released as part of the PyFC code, stored at
 https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 License.
 """
 
-import numpy as np
 import itertools
+import json
 import logging
 import os
-import json
 
-# --- Module Imports ---
-from .config import parse_arguments
-from .plotting import generate_corner_plot
-from .toys import generate_and_fit_toys_python
-from .optimizers import (
-    SCIPY_AVAILABLE, ULTRANEST_AVAILABLE,
-    unconditional_fit_scipy, conditional_fit_1d_scipy, conditional_fit_2d_scipy,
-    unconditional_fit_ultranest, conditional_fit_1d_ultranest, conditional_fit_2d_ultranest
-)
+import numpy as np
 
 from .binned import (
-    unconditional_fit_grid,
+    NUMBA_AVAILABLE,
     conditional_fit_grid_1d,
     conditional_fit_grid_2d,
     generate_and_fit_toys_grid_1d,
     generate_and_fit_toys_grid_2d,
-    NUMBA_AVAILABLE, set_num_threads
+    set_num_threads,
+    unconditional_fit_grid,
 )
 
+# --- Module Imports ---
+from .config import parse_arguments
+from .optimizers import (
+    SCIPY_AVAILABLE,
+    ULTRANEST_AVAILABLE,
+    conditional_fit_1d_scipy,
+    conditional_fit_1d_ultranest,
+    conditional_fit_2d_scipy,
+    conditional_fit_2d_ultranest,
+    unconditional_fit_scipy,
+    unconditional_fit_ultranest,
+)
+from .plotting import generate_corner_plot
+from .toys import generate_and_fit_toys_python
 from .unbinned import (
-    unconditional_fit_grid_unbinned,
     conditional_fit_grid_unbinned_1d,
     conditional_fit_grid_unbinned_2d,
     generate_and_fit_toys_grid_unbinned_1d,
-    generate_and_fit_toys_grid_unbinned_2d
+    generate_and_fit_toys_grid_unbinned_2d,
+    unconditional_fit_grid_unbinned,
 )
 
 try:
@@ -232,7 +238,7 @@ def _save_fc_json(results, output_path, cl, compute_1D_intervals, compute_2D_int
 
 
 def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None, generate_toy_func=None,
-                         cl=[0.90], n_toys=2000, strategy="scipy", num_cores=None, verbose=1,
+                         cl=None, n_toys=2000, strategy="scipy", num_cores=None, verbose=1,
                          adaptive_toys=True, toy_batch_size=200, 
                          sparsify_grid=True, warm_start=True,
                          likelihood_type="binned", S_mc_pool=None, B_mc_pool=None,
@@ -249,19 +255,19 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
     Ratio as the test statistic to determine ordering.
     
     For a given parameter point $\theta_{\text{test}}$, the data test statistic is:
-    $$ t_{\text{data}} = -2 \ln \frac{\mathcal{L}(\theta_{\text{test}}, \hat{\hat{\boldsymbol{\nu}}} | \text{data})}{\mathcal{L}(\hat{\boldsymbol{\theta}} | \text{data})} $$
-    where $\hat{\boldsymbol{\theta}}$ are the unconditional Maximum Likelihood Estimate (MLE) 
-    parameters, and $\hat{\hat{\boldsymbol{\nu}}}$ are the nuisance parameters profiled (maximized) 
-    while fixing $\theta = \theta_{\text{test}}$. (Note: Since `calc_nll` returns $-2\ln\mathcal{L}$, 
+    $$ t_{\text{data}} = -2 \\ln \frac{\\mathcal{L}(\theta_{\text{test}}, \\hat{\\hat{\boldsymbol{\nu}}} | \text{data})}{\\mathcal{L}(\\hat{\boldsymbol{\theta}} | \text{data})} $$
+    where $\\hat{\boldsymbol{\theta}}$ are the unconditional Maximum Likelihood Estimate (MLE) 
+    parameters, and $\\hat{\\hat{\boldsymbol{\nu}}}$ are the nuisance parameters profiled (maximized) 
+    while fixing $\theta = \theta_{\text{test}}$. (Note: Since `calc_nll` returns $-2\\ln\\mathcal{L}$, 
     this simplifies in code to `cond_nll - data_uncond_nll`).
     
     Because the asymptotic distribution of $t$ (Wilks' theorem) may fail near physical boundaries, 
     we evaluate the exact critical threshold $t_{\text{critical}}$ at a required confidence level $\alpha$ 
     by generating and fitting Monte Carlo pseudo-experiments (toys) generated under the null 
-    hypothesis $(\theta_{\text{test}}, \hat{\hat{\boldsymbol{\nu}}})$.
+    hypothesis $(\theta_{\text{test}}, \\hat{\\hat{\boldsymbol{\nu}}})$.
     
     The point $\theta_{\text{test}}$ is included in the final confidence set if:
-    $$ t_{\text{data}} \leq t_{\text{critical}}(\alpha) $$
+    $$ t_{\text{data}} \\leq t_{\text{critical}}(\alpha) $$
 
     Parameters:
     -----------
@@ -316,6 +322,9 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
     
     if compute_rates_func is None:
         raise ValueError("You must provide a valid `compute_rates_func` to define your physical model.")
+
+    if cl is None:
+        cl = [0.90]
         
     os.makedirs(save_directory, exist_ok=True)
     n_params = len(grids)
@@ -531,7 +540,7 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                 cond_grid_points = None
             
             # Helper function to evaluate toys for a specific (i, j) 2D coordinate 
-            def eval_2d_point(i, j):
+            def eval_2d_point(i, j, pair_name=pair_name, gridA=gridA, gridB=gridB, fix_A=fix_A, fix_B=fix_B, cond_grid_points=cond_grid_points):
                 if not np.isnan(results[f"2d_t_critical_{pair_name}"][cl[0]][i, j]):
                     return
                     
@@ -748,7 +757,7 @@ if __name__ == "__main__":
 
     elif config["likelihood_type"] == "unbinned":
         print(f"\n--- Running UNBINNED Analysis Example ({len(grids)}-Parameter) | Modes -> 1D: {config['compute_1D_intervals']} | 2D: {config['compute_2D_intervals']} ---")
-        from scipy.stats import norm, expon
+        from scipy.stats import expon, norm
         
         def s_pdf_mock(x): return norm.pdf(x, loc=5.0, scale=1.0)
         def b_pdf_mock(x): return expon.pdf(x, scale=2.0)

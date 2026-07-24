@@ -20,6 +20,7 @@ https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 Lice
 
 import numpy as np
 
+
 # --- 1. Core Math (Unbinned) ---
 def calc_nll_unbinned(params, len_obs, s_probs, b_probs, compute_rates_func):
     """
