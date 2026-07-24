@@ -17,7 +17,7 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
 ---
 
 ## Table of Contents
-1. [Installation](#installation)
+1. [Installation & Requirements](#installation--requirements)
 2. [File Tree](#file-tree)
 3. [Configuration & generate_config.py](#configuration--generate_configpy)
 4. [Quick Start Guide](#quick-start-guide)
@@ -27,17 +27,33 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
 8. [Statistical Methodology & Mathematics](#statistical-methodology--mathematics)
 9. [Outputs, Plots, and Checkpointing](#outputs-plots-and-checkpointing)
 10. [Common Recipes and Questions](#common-recipes-and-questions)
-11. [How to Cite](#how-to-cite)
+11. [Contributing](#contributing)
+12. [License](#license)
+13. [How to Cite](#how-to-cite)
 
 ---
 
-## Installation
+## Installation & Requirements
 
-Clone the repository and install via `pip` to ensure all dependencies (NumPy, SciPy, Numba, UltraNest, Corner) are resolved.
+PyFC requires **Python 3.8+**. Core dependencies include:
+* `numpy >= 1.20`
+* `scipy`
+* `numba`
+* `ultranest`
+* `corner`
+* `matplotlib`
+
+Clone the repository and install via `pip` to automatically resolve and install all dependencies:
 
     git clone https://github.com/mbustama/FeldmanCousins.git
     cd FeldmanCousins
     pip install -e .
+
+**Testing:**
+To verify that the installation was successful and the optimizers are functioning correctly on your hardware, run the test suite:
+    
+    pip install pytest
+    pytest tests/
 
 ---
 
@@ -48,6 +64,7 @@ The project structure is organized modularly to separate analytical likelihood m
     FeldmanCousins/
     ├── pyproject.toml         # Build system and dependency specifications
     ├── README.md              # Project documentation
+    ├── tests/                 # Unit and integration test suite
     └── src/
         └── pyfc/
             ├── __init__.py          # Package initialization and metadata
@@ -112,7 +129,8 @@ The script will prompt you with questions regarding your likelihood type, number
 The way you define your physics model depends entirely on whether your analysis is **binned** or **unbinned**.
 
 **1. Binned Models**
-For a phenomenological analysis, your models should be parameterized functions (callables) that map your physics parameters (e.g., cross-sections, fluxes) to 1D numpy arrays representing expected event counts per bin.
+For a phenomenological analysis, your models should be parameterized functions (callables) that map your physics parameters to 1D numpy arrays representing expected event counts per bin. 
+*(Note: While this example shows separate Signal and Background functions, PyFC also accepts a single unified model function if your phenomenological setup naturally computes total event rates).*
 
     import numpy as np
 
@@ -133,20 +151,26 @@ For a phenomenological analysis, your models should be parameterized functions (
 
 **2. Unbinned Models**
 For unbinned data, you must provide normalized probability density functions (PDFs) that can evaluate an array of kinematic coordinates (events) and return the probability density at each point. 
+If your data is multi-dimensional (e.g., Energy and Zenith Angle), your input array `events` will have a shape of `(N_events, N_features)`, and your PDF must slice it accordingly.
 
-    from scipy.stats import norm, expon
+    from scipy.stats import norm
 
-    def S_model_pdf(x):
-        """Signal PDF: returns the probability density evaluated at array x."""
-        return norm.pdf(x, loc=5.0, scale=1.0)
-
-    def B_model_pdf(x):
-        """Background PDF: returns the probability density evaluated at array x."""
-        return expon.pdf(x, scale=2.0)
-*Note: Ensure your unbinned PDF functions can accept vector (NumPy array) inputs for computational efficiency.*
+    def S_model_pdf(events):
+        """
+        Signal PDF for multi-dimensional unbinned events.
+        'events' is a 2D array of shape (N_events, 2)
+        """
+        energy = events[:, 0]
+        zenith = events[:, 1]
+        
+        # Evaluate density based on physics parameters
+        prob_e = norm.pdf(energy, loc=5.0, scale=1.0)
+        prob_z = norm.pdf(zenith, loc=0.0, scale=0.5)
+        return prob_e * prob_z
 
 ### Execution via JSON Config
-Once you have your models defined and your config generated, you can pass them dynamically into the central orchestrator:
+Once you have your models defined and your config generated, you can pass them dynamically into the central orchestrator. 
+*(Crucially: The JSON configuration file only dictates the hyperparameters of the Feldman-Cousins algorithm. You must still pass your physical data, models, and spatial grids explicitly in your Python script).*
 
     import json
     import numpy as np
@@ -163,7 +187,7 @@ Once you have your models defined and your config generated, you can pass them d
     # 2. Mock Data
     observed_counts = np.array([20, 7, 2, 0])
 
-    # 3. Load the generated JSON configuration
+    # 3. Load the generated JSON configuration hyperparameters
     with open('fc_config.json', 'r') as f:
         config = json.load(f)
 
@@ -173,6 +197,7 @@ Once you have your models defined and your config generated, you can pass them d
         S_model=S_model_func,
         B_model=B_model_func,
         grids=grids,
+        poi_indices=[0, 1], # Explicitly scans Param 1 & 2, profiling Param 3
         **config 
     )
 
@@ -207,6 +232,9 @@ Once you have your models defined and your config generated, you can pass them d
 ## Execution Strategies & Algorithmic Optimizations
 
 PyFC provides several comprehensive levers to optimize computation time versus robustness based on the complexity of your likelihood surface.
+
+### Handling Multi-Dimensional Parameter Spaces
+PyFC is built to handle arbitrary $N$-dimensional physics models. You provide the full parameter space via the `grids` argument. By passing `poi_indices` to the orchestrator, you designate which dimensions serve as the primary Parameters of Interest (POIs) for the 1D/2D intervals. The algorithm seamlessly profiles (maximizes the likelihood over) all non-POI dimensions at every point during both the data fitting and the empirical toy generation phases.
 
 ### Optimizer Strategy (`strategy`)
 *   **`"scipy"` (L-BFGS-B)**: Highly recommended for most physics applications. It utilizes bounding constraints and analytical approximations of the gradient to find likelihood minima incredibly quickly. It assumes a relatively smooth parameter space.
@@ -330,7 +358,23 @@ While PyFC automatically saves default plots, you will likely want to format you
 A: For a 68% CL interval (1-sigma), 500-1000 toys are often sufficient. For a 90% or 95% limit, 2000-5000 toys are required to smoothly resolve the tail of the test statistic distribution. Ensure `n_toys` is large enough that $N_{\text{toys}} \times (1 - \alpha) \gg 1$.
 
 **Q: I have a parameter that represents a systematic uncertainty. How do I profile it?**
-A: Simply pass a `np.linspace()` grid for that parameter into the `grids` list. PyFC automatically profiles (maximizes) all parameters in the `grids` list that are not currently fixed as the specific parameters of interest during 1D or 2D conditional scanning.
+A: Simply pass a `np.linspace()` grid for that parameter into the `grids` list, and ensure its index is not included in the `poi_indices` when calling `compute_fc_intervals`. PyFC automatically profiles (maximizes) all parameters in the `grids` list that are not explicitly flagged as the parameters of interest.
+
+---
+
+## Contributing
+
+We welcome contributions to PyFC, including bug reports, feature requests, and code modifications! 
+1. Open an issue on the GitHub repository to discuss the proposed change.
+2. Fork the repository and create a feature branch (`git checkout -b feature/new-optimizer`).
+3. Ensure all tests pass (`pytest tests/`) and code is fully documented.
+4. Submit a Pull Request.
+
+---
+
+## License
+
+PyFC is distributed under the **GNU General Public License v3.0 (GPLv3)**. You are free to use, modify, and distribute this software, provided that any derivative works are also open-source and licensed under GPLv3. See the `LICENSE` file in the repository root for full details.
 
 ---
 
