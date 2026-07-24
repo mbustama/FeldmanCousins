@@ -23,10 +23,11 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
 4. [Quick Start Guide](#quick-start-guide)
 5. [Configuration Parameters (CLI / JSON)](#configuration-parameters-cli--json)
 6. [Execution Strategies & Algorithmic Optimizations](#execution-strategies--algorithmic-optimizations)
-7. [Statistical Methodology & Mathematics](#statistical-methodology--mathematics)
-8. [Outputs, Plots, and Checkpointing](#outputs-plots-and-checkpointing)
-9. [Common Recipes and Questions](#common-recipes-and-questions)
-10. [How to Cite](#how-to-cite)
+7. [HPC & Parallelization Guidelines](#hpc--parallelization-guidelines)
+8. [Statistical Methodology & Mathematics](#statistical-methodology--mathematics)
+9. [Outputs, Plots, and Checkpointing](#outputs-plots-and-checkpointing)
+10. [Common Recipes and Questions](#common-recipes-and-questions)
+11. [How to Cite](#how-to-cite)
 
 ---
 
@@ -226,6 +227,23 @@ Calculating $N_{\text{toys}}$ for every node in a $100 \times 100$ 2D grid is co
 
 ---
 
+## HPC & Parallelization Guidelines
+
+PyFC is explicitly engineered to scale across multi-core High-Performance Computing (HPC) nodes. Parallelization is handled contextually based on your analysis type:
+*   **Binned Likelihoods**: Exploits GIL-bypassing via Numba-compiled C-extensions. Toy generation and fitting are parallelized at the NumPy array level.
+*   **Unbinned Likelihoods**: Utilizes Python's `concurrent.futures.ProcessPoolExecutor` to spawn independent worker processes for continuous function evaluation.
+
+**HPC Do's and Don'ts:**
+*   **DO map `num_cores` to your Slurm/PBS allocations.** If you set `num_cores=0` (default), PyFC requests all available threads on the hardware. If running via a Slurm workload manager, it is highly recommended to explicitly pass the allocated CPUs to avoid overcommitting: 
+    ```python
+    import os
+    config['num_cores'] = int(os.environ.get('SLURM_CPUS_PER_TASK', 0))
+    ```
+*   **DO utilize whole nodes.** Because the unbinned optimizer relies on multi-processing, it scales near-linearly. Requesting exclusive nodes (e.g., 64 or 128 cores) will drastically reduce Feldman-Cousins runtime.
+*   **DON'T enable `save_log` for massive array jobs.** If you are submitting hundreds of job arrays to an HPC, writing individual `.txt` logs continuously can bottleneck shared network file systems (NFS). Rely on the binary checkpointing instead.
+
+---
+
 ## Statistical Methodology & Mathematics
 
 PyFC implements exact classical frequentist intervals. The code executes the methodology prescribed by Gary Feldman and Robert Cousins (1998) to solve the empty-set problem near physical boundaries.
@@ -233,7 +251,7 @@ PyFC implements exact classical frequentist intervals. The code executes the met
 ### The Profile Likelihood Ratio
 For a general parameter vector divided into parameters of interest $\boldsymbol{\theta}$ and nuisance parameters $\boldsymbol{\nu}$, we construct the Profile Likelihood Ratio (PLR) test statistic $t$:
 
-$$t_{\text{data}}(\boldsymbol{\theta})=-2\ln\frac{\mathcal{L}(\boldsymbol{\theta},\hat{\hat{\boldsymbol{\nu}}}|\text{data})}{\mathcal{L}(\hat{\boldsymbol{\theta}},\hat{\boldsymbol{\nu}}|\text{data})}$$
+$$t_{\text{data}}(\boldsymbol{\theta}) = -2 \ln \frac{\mathcal{L}(\boldsymbol{\theta}, \hat{\hat{\boldsymbol{\nu}}} | \text{data})}{\mathcal{L}(\hat{\boldsymbol{\theta}}, \hat{\boldsymbol{\nu}} | \text{data})}$$
 
 Where:
 * $\mathcal{L}(\hat{\boldsymbol{\theta}}, \hat{\boldsymbol{\nu}} | \text{data})$ is the unconditional Maximum Likelihood Estimate (MLE) over the entire allowed parameter space.
@@ -244,18 +262,18 @@ By construction, $t \geq 0$. Lower values indicate excellent agreement between t
 ### Binned Likelihood
 For binned configurations, the likelihood is the product of independent Poisson probabilities across $N$ bins. Dropping the data-dependent factorial constant, PyFC evaluates the Negative Log-Likelihood (NLL):
 
-$$-\ln\mathcal{L}_{\text{Poisson}}=\sum_{i=1}^{N}\left(\mu_i(\boldsymbol{\theta})-n_i\ln\mu_i(\boldsymbol{\theta})\right)$$
+$$-\ln \mathcal{L}_{\text{Poisson}} = \sum_{i=1}^{N} \left( \mu_i(\boldsymbol{\theta}) - n_i \ln \mu_i(\boldsymbol{\theta}) \right)$$
 
 **Finite Monte Carlo Correction:**
 If `use_finite_mc_correction_binned` is True, the pure Poisson distribution is convoluted with a Gamma prior, shifting the likelihood to a Negative Binomial distribution:
 
-$$-\ln\mathcal{L}_{\text{FiniteMC}}=\sum_{i=1}^{N}\left(\frac{\mu_i^2}{\sigma_i^2}\ln\left(1+\frac{\sigma_i^2}{\mu_i}\right)-n_i\ln\left(\frac{\mu_i}{1+\sigma_i^2/\mu_i}\right)\right)$$
+$$-\ln \mathcal{L}_{\text{FiniteMC}} = \sum_{i=1}^{N} \left( \frac{\mu_i^2}{\sigma_i^2} \ln \left( 1 + \frac{\sigma_i^2}{\mu_i} \right) - n_i \ln \left( \frac{\mu_i}{1 + \sigma_i^2 / \mu_i} \right) \right)$$
 where $\sigma_i^2$ is the variance (sum of squared MC weights) in bin $i$.
 
 ### Extended Unbinned Maximum Likelihood
 When binning causes unacceptable information loss (e.g., highly complex kinematics with low event counts), PyFC evaluates the unbinned likelihood. Instead of bin counts, it uses the exact coordinates $x_j$ of the $M$ observed events.
 
-$$-\ln\mathcal{L}_{\text{EUML}}=N_{\text{expected}}(\boldsymbol{\theta})-\sum_{j=1}^{M}\ln\lambda(x_j|\boldsymbol{\theta})$$
+$$-\ln \mathcal{L}_{\text{EUML}} = N_{\text{expected}}(\boldsymbol{\theta}) - \sum_{j=1}^{M} \ln \lambda(x_j | \boldsymbol{\theta})$$
 where $N_{\text{expected}}$ is the integral of the total rate, and $\lambda(x_j)$ is the non-normalized rate evaluated strictly at the properties of event $j$.
 
 ---
@@ -267,11 +285,42 @@ Feldman-Cousins calculations are highly resource-intensive and often run on shar
 
 If your script is interrupted, simply run it again. PyFC will detect the `checkpoint_fc.npz` file, rigorously verify that your newly requested parameter grids match the saved geometry exactly, and seamlessly resume toy generation from the exact point of interruption.
 
-### Stored Results
+### Stored Results & Custom Plotting
 Upon successful completion, the pipeline outputs final structures directly to your `save_directory` (default: `fc_output/`):
-* **`fc_results.npz`**: A highly compressed NumPy archive containing raw matrices for $t_{\text{data}}$, interpolated $t_{\text{critical}}$ surfaces, profiled nuisance parameters, and boolean acceptance masks across all configurations.
-* **`fc_results.json`**: A human-readable dictionary summarizing the exact thresholds and limits, properly formatted with standard Python datatypes for web frameworks or cross-language ingestion.
-* **`corner_plot.png`**: (And assorted 1D/2D projection images, generated via `plotting.py`) displaying your localized best-fit points alongside the extracted 68% and 90% CL limit contours mapped over your parameter space.
+* **`fc_results.npz`**: A highly compressed NumPy archive containing raw matrices for the physical grids (`grid_x`, `grid_y`), the test statistic (`t_data`), interpolated critical thresholds (`t_critical_68`, `t_critical_90`), and boolean acceptance masks (`acceptance_68`, `acceptance_90`).
+* **`fc_results.json`**: A dictionary containing structural metadata, exact confidence levels, and the global unconditional best-fit coordinate.
+
+**Code Snippet: Generating Custom Contours**
+While PyFC automatically saves default plots, you will likely want to format your own figures for publication. You can easily ingest the output files to do so:
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import json
+
+    # 1. Load the numerical matrices
+    results = np.load('fc_output/fc_results.npz')
+    X = results['grid_x']
+    Y = results['grid_y']
+    mask_90 = results['acceptance_90']  # Boolean array where True = inside 90% CL limit
+
+    # 2. Load the metadata
+    with open('fc_output/fc_results.json', 'r') as f:
+        meta = json.load(f)
+    best_fit = meta['best_fit']
+
+    # 3. Plot the allowed region
+    plt.figure(figsize=(8, 6))
+    # contourf uses the boolean mask to shade the allowed parameter space
+    plt.contourf(X, Y, mask_90, levels=[0.5, 1.5], colors=['#1f77b4'], alpha=0.3)
+    
+    # Plot the global best fit point
+    plt.plot(best_fit[0], best_fit[1], 'r*', markersize=12, label='Global Best Fit')
+
+    plt.xlabel(meta['param_names'][0])
+    plt.ylabel(meta['param_names'][1])
+    plt.title('Custom 90% CL Feldman-Cousins Region')
+    plt.legend()
+    plt.show()
 
 ---
 
