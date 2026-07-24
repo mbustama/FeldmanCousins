@@ -50,7 +50,7 @@ PyFC requires **Python 3.8+**. Core dependencies include:
 Clone the repository and install via `pip` to automatically resolve and install all dependencies:
 
 ```bash
-git clone [https://github.com/mbustama/FeldmanCousins.git](https://github.com/mbustama/FeldmanCousins.git)
+git clone https://github.com/mbustama/FeldmanCousins.git
 cd FeldmanCousins
 pip install -e .
 ```
