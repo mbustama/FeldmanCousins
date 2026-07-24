@@ -3,6 +3,7 @@ Tests for continuous optimization routines.
 """
 import numpy as np
 import pytest
+from numba import njit
 from pyfc.optimizers import unconditional_fit_scipy, SCIPY_AVAILABLE
 
 @pytest.mark.skipif(not SCIPY_AVAILABLE, reason="SciPy is required for this test")
@@ -17,14 +18,22 @@ def test_scipy_boundary_clamping():
     # Intentionally provide a seed that slightly violates the upper bound
     bad_seed = np.array([1.0000000000000002])
     
-    # Dummy mock functions to satisfy the optimizer signature
-    dummy_data = np.array([10])
-    dummy_S = lambda x: x
-    dummy_B = lambda x: x
-    dummy_compute = lambda p, *args: (p[0], 0.1)
+    # Provide Numba-compatible arrays for binned templates (not lambdas)
+    dummy_data = np.array([10.0])
+    dummy_S = np.array([1.0])
+    dummy_B = np.array([1.0])
+    dummy_S_sig = np.array([0.1])
+    dummy_B_sig = np.array([0.1])
+
+    # Provide a properly JIT-compiled compute function so Numba doesn't fail
+    @njit
+    def dummy_compute(params, S_template, B_template, S_sigma2, B_sigma2):
+        mu = params[0] * S_template
+        sigma2 = params[0] * S_template * 0.1
+        return mu, sigma2
 
     try:
-        # If clipping is working, this will not raise a ValueError
+        # If clipping is working, this will not raise a SciPy ValueError
         min_nll, best_params = unconditional_fit_scipy(
             data=dummy_data,
             S_model=dummy_S,
@@ -34,6 +43,8 @@ def test_scipy_boundary_clamping():
             compute_rates_func=dummy_compute,
             seed=bad_seed,
             likelihood_type="binned",
+            S_sigma2=dummy_S_sig,
+            B_sigma2=dummy_B_sig,
             use_finite_mc=False
         )
         assert True
