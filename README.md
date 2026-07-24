@@ -23,14 +23,15 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
     * [Defining Physics Models](#defining-physics-models)
     * [Method 1: Direct Python Execution](#method-1-direct-python-execution)
     * [Method 2: Execution via JSON Config](#method-2-execution-via-json-config)
-4. [Statistical Methodology & Mathematics](#statistical-methodology--mathematics)
+4. [Configuration Parameters (CLI / JSON)](#configuration-parameters-cli--json)
+5. [Statistical Methodology & Mathematics](#statistical-methodology--mathematics)
     * [The Profile Likelihood Ratio](#the-profile-likelihood-ratio)
     * [Binned Likelihood (Poisson & Finite MC)](#binned-likelihood)
     * [Extended Unbinned Maximum Likelihood](#unbinned-likelihood)
     * [Empirical Coverage (Toy Generation)](#empirical-coverage-and-toy-generation)
     * [2D Contour Sparsification](#2d-contour-sparsification)
-5. [Common Recipes and Questions](#common-recipes-and-questions)
-6. [How to Cite](#how-to-cite)
+6. [Common Recipes and Questions](#common-recipes-and-questions)
+7. [How to Cite](#how-to-cite)
 
 ---
 
@@ -63,16 +64,28 @@ Clone the repository and install via `pip` to ensure all dependencies (NumPy, Sc
 The way you define your physics model depends entirely on whether your analysis is **binned** or **unbinned**.
 
 **1. Binned Models**
-For binned data, your structural templates should evaluate to 1D arrays of expected rates (e.g., event counts per bin).
+For a phenomenological analysis, your models should be parameterized functions (callables) that map your physics parameters (e.g., cross-sections, fluxes) to 1D numpy arrays representing expected event counts per bin.
+
     import numpy as np
 
-    # In the binned framework, models can be static templates or functions of parameters.
-    # E.g., a simple scaling of predefined Monte Carlo templates:
-    S_template = np.array([0.1, 0.5, 2.0, 5.0])
-    B_template = np.array([15.0, 5.0, 1.0, 0.1])
+    def S_model_func(flux_norm, spectral_index):
+        """
+        Calculates the expected signal array across energy bins.
+        These parameters will map directly to the parameter grids defined in the orchestrator.
+        """
+        energy_bins = np.array([10.0, 100.0, 1000.0, 10000.0])
+        return flux_norm * (energy_bins ** -spectral_index)
+
+    def B_model_func(bg_norm):
+        """
+        Calculates the expected background array based on a scaling parameter.
+        """
+        nominal_atmospheric_bg = np.array([15.0, 5.0, 1.0, 0.1])
+        return bg_norm * nominal_atmospheric_bg
 
 **2. Unbinned Models**
 For unbinned data, you must provide normalized probability density functions (PDFs) that can evaluate an array of kinematic coordinates (events) and return the probability density at each point. 
+
     from scipy.stats import norm, expon
 
     def S_model_pdf(x):
@@ -85,28 +98,27 @@ For unbinned data, you must provide normalized probability density functions (PD
 *Note: Ensure your unbinned PDF functions can accept vector (NumPy array) inputs for computational efficiency.*
 
 ### Method 1: Direct Python Execution
-You can import the `compute_fc_intervals` orchestrator directly and pass explicit parameters.
+You can import the `compute_fc_intervals` orchestrator directly and pass your custom callable models and explicit parameter arrays.
 
     import numpy as np
     from pyfc.orchestrator import compute_fc_intervals
 
     # 1. Define physical grids (the parameter space to scan)
-    # Let's say param1 is Signal Norm, param2 is Background Norm
+    # These grids correspond sequentially to the inputs of S_model_func and B_model_func
     grids = [
-        np.linspace(0.0, 5.0, 20), # Param 1
-        np.linspace(0.8, 1.2, 10)  # Param 2 (e.g., a constrained nuisance parameter)
+        np.linspace(1e-9, 1e-7, 20), # Param 1: flux_norm
+        np.linspace(2.0, 3.0, 15),   # Param 2: spectral_index
+        np.linspace(0.8, 1.2, 10)    # Param 3: bg_norm (nuisance parameter)
     ]
 
     # 2. Mock Data
-    observed_counts = np.array([10, 8, 3, 2])
-    S_template = np.array([1.0, 2.0, 3.0, 4.0])
-    B_template = np.array([10.0, 5.0, 1.0, 0.1])
+    observed_counts = np.array([20, 7, 2, 0])
 
     # 3. Execute Feldman-Cousins
     results = compute_fc_intervals(
         data=observed_counts,
-        S_model=S_template,
-        B_model=B_template,
+        S_model=S_model_func,
+        B_model=B_model_func,
         grids=grids,
         cl=[0.68, 0.90],
         n_toys=1000,
@@ -114,7 +126,7 @@ You can import the `compute_fc_intervals` orchestrator directly and pass explici
         likelihood_type="binned",
         compute_1D_intervals=True,
         compute_2D_intervals=True,
-        param_names=["Signal Norm", "Background Norm"]
+        param_names=["Flux Norm", "Spectral Index", "Background Norm"]
     )
 
 ### Method 2: Execution via JSON Config
@@ -130,11 +142,39 @@ You can generate a configuration file via the CLI (`python -m pyfc.generate_conf
     # The orchestrator expects kwargs, so we unpack the dictionary using **
     results = compute_fc_intervals(
         data=observed_counts,
-        S_model=S_template,
-        B_model=B_template,
+        S_model=S_model_func,
+        B_model=B_model_func,
         grids=grids,
         **config  # Unpacks n_toys, strategy, num_cores, likelihood_type, etc.
     )
+
+---
+
+## Configuration Parameters (CLI / JSON)
+
+Whether running via the `generate_config.py` CLI or passing arguments directly into Python, PyFC accepts the following hyper-parameters to control the physics assumptions, statistics, and hardware usage:
+
+| Parameter | Description | Allowed Values | Default |
+| :--- | :--- | :--- | :--- |
+| `likelihood_type` | Evaluates models via Poisson bins or Extended Unbinned Maximum Likelihood. | `"binned"`, `"unbinned"` | `"binned"` |
+| `cl` | Confidence Levels determining exact frequentist coverage integration targets. | List of floats `(0.0, 1.0)` | `[0.68, 0.90]` |
+| `n_toys` | Monte Carlo pseudo-experiments generated per parameter space point. | Integer `> 0` | `2000` |
+| `strategy` | Optimizer used for finding global and conditional likelihood minima. | `"scipy"`, `"ultranest"`, `"hybrid"`, `"grid"` | `"scipy"` |
+| `use_finite_mc_correction_binned` | Shifts Poisson likelihood to a Negative Binomial to account for finite simulation stats. | `True`, `False` | `True` |
+| `compute_1D_intervals` | Toggles profiling nuisance parameters for 1D parameter limits. | `True`, `False` | `True` |
+| `compute_2D_intervals` | Toggles joint 2D contour scanning and edge tracing. | `True`, `False` | `True` |
+| `num_cores` | Thread/process count for parallel toy generation. `0` maps to max hardware threads. | Integer `>= 0` | `0` (Max) |
+| `verbose` | Logging detail level. | `0` (Silent), `1`, `2` (Debug) | `1` |
+| `warm_start` | Checkpoints interim state to `.npz` files to recover from preemptions. | `True`, `False` | `True` |
+| `param_names` | Labels mapping the physical parameters for plotting outputs. | List of strings | `["param1", "param2", ...]` |
+| `smooth_1d` | Applies Gaussian kernel smoothing to 1D limit profiles in plots. | `True`, `False` | `False` |
+| `smooth_2d` | Applies interpolation smoothing to final 2D contour graphics. | `True`, `False` | `False` |
+| `adaptive_toys` | Dynamically skips toy generation if a point is definitively excluded. | `True`, `False` | `True` |
+| `toy_batch_size` | Chunk size for batched array generation (optimizes memory/speed). | Integer `> 0` | `200` |
+| `sparsify_grid` | Traces contour perimeters in 2D space to skip resolving deep interior/exterior nodes. | `True`, `False` | `True` |
+| `save_log` | Pipes output directly to a persistent text log file. | `True`, `False` | `False` |
+| `save_directory` | Directory path where final results, plots, and checkpoints reside. | String (path) | `"fc_output"` |
+| `output_file` | Prefix for the serialized `.npz` and `.json` result data structures. | String | `"fc_results"` |
 
 ---
 
@@ -145,7 +185,7 @@ PyFC implements exact classical frequentist intervals. The code executes in excr
 ### The Profile Likelihood Ratio
 For a general parameter vector divided into parameters of interest $\boldsymbol{\theta}$ and nuisance parameters $\boldsymbol{\nu}$, we construct the Profile Likelihood Ratio (PLR) test statistic $t$:
 
-$$ t_{\text{data}}(\boldsymbol{\theta}) = -2 \ln \frac{\mathcal{L}(\boldsymbol{\theta}, \hat{\hat{\boldsymbol{\nu}}} | \text{data})}{\mathcal{L}(\hat{\boldsymbol{\theta}}, \hat{\boldsymbol{\nu}} | \text{data})} $$
+$$t_{\text{data}}(\boldsymbol{\theta}) = -2 \ln \frac{\mathcal{L}(\boldsymbol{\theta}, \hat{\hat{\boldsymbol{\nu}}} | \text{data})}{\mathcal{L}(\hat{\boldsymbol{\theta}}, \hat{\boldsymbol{\nu}} | \text{data})}$$
 
 Where:
 * $\mathcal{L}(\hat{\boldsymbol{\theta}}, \hat{\boldsymbol{\nu}} | \text{data})$ is the unconditional Maximum Likelihood Estimate (MLE) over the entire allowed parameter space.
@@ -156,18 +196,18 @@ By construction, $t \geq 0$. Lower values indicate excellent agreement between t
 ### Binned Likelihood
 For binned configurations, the likelihood is the product of independent Poisson probabilities across $N$ bins. Dropping the data-dependent factorial constant, PyFC evaluates the Negative Log-Likelihood (NLL):
 
-$$ - \ln \mathcal{L}_{\text{Poisson}} = \sum_{i=1}^{N} \left( \mu_i(\boldsymbol{\theta}) - n_i \ln \mu_i(\boldsymbol{\theta}) \right) $$
+$$-\ln \mathcal{L}_{\text{Poisson}} = \sum_{i=1}^{N} \left( \mu_i(\boldsymbol{\theta}) - n_i \ln \mu_i(\boldsymbol{\theta}) \right)$$
 
 **Finite Monte Carlo Correction (Beeston-Barlow):**
 If `use_finite_mc_correction_binned` is True, PyFC acknowledges that the template $\mu_i$ is derived from finite simulation statistics. The pure Poisson distribution is convoluted with a Gamma prior, shifting the likelihood to a Negative Binomial distribution:
 
-$$ - \ln \mathcal{L}_{\text{FiniteMC}} = \sum_{i=1}^{N} \left( \frac{\mu_i^2}{\sigma_i^2} \ln \left( 1 + \frac{\sigma_i^2}{\mu_i} \right) - n_i \ln \left( \frac{\mu_i}{1 + \sigma_i^2 / \mu_i} \right) \right) $$
+$$-\ln \mathcal{L}_{\text{FiniteMC}} = \sum_{i=1}^{N} \left( \frac{\mu_i^2}{\sigma_i^2} \ln \left( 1 + \frac{\sigma_i^2}{\mu_i} \right) - n_i \ln \left( \frac{\mu_i}{1 + \sigma_i^2 / \mu_i} \right) \right)$$
 where $\sigma_i^2$ is the variance (sum of squared MC weights) in bin $i$.
 
 ### Extended Unbinned Maximum Likelihood
 When binning causes unacceptable information loss (e.g., highly complex kinematics with low event counts), PyFC evaluates the unbinned likelihood. Instead of bin counts, it uses the exact coordinates $x_j$ of the $M$ observed events.
 
-$$ - \ln \mathcal{L}_{\text{EUML}} = N_{\text{expected}}(\boldsymbol{\theta}) - \sum_{j=1}^{M} \ln \lambda(x_j | \boldsymbol{\theta}) $$
+$$-\ln \mathcal{L}_{\text{EUML}} = N_{\text{expected}}(\boldsymbol{\theta}) - \sum_{j=1}^{M} \ln \lambda(x_j | \boldsymbol{\theta})$$
 where $N_{\text{expected}}$ is the integral of the total rate, and $\lambda(x_j)$ is the non-normalized rate evaluated strictly at the properties of event $j$.
 
 ### Empirical Coverage and Toy Generation
