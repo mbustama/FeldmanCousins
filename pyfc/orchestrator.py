@@ -674,8 +674,33 @@ if __name__ == "__main__":
         
         @njit(fastmath=True, nogil=True)
         def example_compute_rates_binned(params, S_template, B_template, S_sigma2, B_sigma2):
-            mu = params[0] * params[1] * S_template + params[2] * B_template
-            sigma2 = ((params[0] * params[1])**2) * S_sigma2 + (params[2]**2) * B_sigma2
+            """
+            Computes the expected binned rates and variances for a non-degenerate 
+            3-parameter mock model.
+            
+            Parameters:
+            -----------
+            params : array_like
+                params[0] = Signal strength multiplier
+                params[1] = Flat background offset (breaks degeneracy)
+                params[2] = Template background strength multiplier
+            S_template, B_template : array_like
+                Base expected counts for signal and template background.
+            S_sigma2, B_sigma2 : array_like
+                MC template variances.
+                
+            Returns:
+            --------
+            mu : array_like
+                Total expected counts per bin.
+            sigma2 : array_like
+                Total variance per bin.
+            """
+            # Using independent linear contributions to break the params[0]*params[1] degeneracy
+            mu = params[0] * S_template + params[1] + params[2] * B_template
+            
+            # The flat background is treated as exact (0 variance) for this example
+            sigma2 = (params[0]**2) * S_sigma2 + (params[2]**2) * B_sigma2
             return mu, sigma2
             
         S_template = np.array([0.1, 0.5, 2.0, 5.0])
@@ -685,9 +710,10 @@ if __name__ == "__main__":
         B_sigma2 = B_template.copy()
         
         np.random.seed(42)
-        N_data_binned = np.random.poisson(1.0 * 1.0 * S_template + 1.0 * B_template)
+        # Updated to inject 1.0 for all three parameters
+        N_data_binned = np.random.poisson(1.0 * S_template + 1.0 + 1.0 * B_template)
         print(f"Mock Observed Data (Binned Counts): {N_data_binned}")
-        
+
         fc_results = compute_fc_intervals(
             N_data_binned, S_template, B_template, grids, 
             compute_rates_func=example_compute_rates_binned,
@@ -714,20 +740,63 @@ if __name__ == "__main__":
         def b_pdf_mock(x): return expon.pdf(x, scale=2.0)
         
         def example_compute_rates_unbinned(params, s_probs, b_probs):
-            expected_total = params[0] * params[1] + params[2]
+            """
+            Computes total expected events and pointwise likelihood probabilities.
+            
+            Parameters:
+            -----------
+            params : array_like
+                params[0] = Signal strength multiplier
+                params[1] = Flat background strength (breaks degeneracy)
+                params[2] = Template background strength
+            s_probs, b_probs : array_like
+                Evaluated PDF probabilities for each event.
+                
+            Returns:
+            --------
+            expected_total : float
+                Total expected events across all sources.
+            p_events : array_like
+                Un-normalized likelihood densities evaluated for each event.
+            """
+            expected_total = params[0] + params[1] + params[2]
+            
             if len(s_probs) == 0 and len(b_probs) == 0:
                 return expected_total, np.array([])
-            p_events = params[0] * params[1] * s_probs + params[2] * b_probs
+                
+            # Assume the flat background is distributed uniformly between 0 and 10 (PDF = 0.1)
+            p_events = params[0] * s_probs + params[1] * 0.1 + params[2] * b_probs
             return expected_total, p_events
 
         def example_generate_unbinned_toy(true_params, S_mc_pool, B_mc_pool):
-            n_sig = np.random.poisson(true_params[0] * true_params[1])
+            """
+            Generates unbinned toy datasets based on the 3-parameter model.
+            
+            Parameters:
+            -----------
+            true_params : array_like
+                The parameter point (hypothesis) to generate toys from.
+            S_mc_pool, B_mc_pool : array_like
+                Pre-generated MC events to draw from for the templates.
+                
+            Returns:
+            --------
+            array_like
+                1D array of generated event features.
+            """
+            n_sig = np.random.poisson(true_params[0])
+            n_flat = np.random.poisson(true_params[1])
             n_bkg = np.random.poisson(true_params[2])
+            
             parts = []
             if n_sig > 0 and S_mc_pool is not None and len(S_mc_pool) > 0:
                 parts.append(np.random.choice(S_mc_pool, size=n_sig, replace=True))
+            if n_flat > 0:
+                # Flat background distributed uniformly between 0 and 10
+                parts.append(np.random.uniform(0, 10, size=n_flat))
             if n_bkg > 0 and B_mc_pool is not None and len(B_mc_pool) > 0:
                 parts.append(np.random.choice(B_mc_pool, size=n_bkg, replace=True))
+                
             if parts:
                 return np.concatenate(parts)
             return np.array([])
@@ -735,8 +804,10 @@ if __name__ == "__main__":
         s_mc_pool = np.random.normal(loc=5.0, scale=1.0, size=5000)
         b_mc_pool = np.random.exponential(scale=2.0, size=5000)
         
+        # Updated to include events from the new flat background parameter
         unbinned_data = np.concatenate([
             np.random.choice(s_mc_pool, size=2), 
+            np.random.uniform(0, 10, size=2),
             np.random.choice(b_mc_pool, size=3)  
         ])
         print(f"Mock Observed Unbinned Events: {np.round(unbinned_data, 2)}")

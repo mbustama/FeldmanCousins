@@ -168,8 +168,11 @@ def generate_corner_plot(results, config):
                 
                 # Ensure a mathematical zero-crossing exists within the evaluated array 
                 # to prevent matplotlib contouring warnings when bounds are unconstrained
-                if np.min(z_diff) <= 0.0 <= np.max(z_diff):
+                tol = 1e-2
+                if np.min(z_diff) <= (0.0 + tol) and np.max(z_diff) >= (0.0 - tol):
                     ax.contour(X, Y, z_diff, levels=[0.0], colors=[colors[idx % len(colors)]], linewidths=2)
+                # if np.min(z_diff) <= 0.0 <= np.max(z_diff):
+                #     ax.contour(X, Y, z_diff, levels=[0.0], colors=[colors[idx % len(colors)]], linewidths=2)
                 
                 # Generate a dummy line exclusively to populate the legend on the bottom-left plot
                 if row == n_params - 1 and col == 0: 

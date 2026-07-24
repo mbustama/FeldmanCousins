@@ -48,23 +48,23 @@ def generate_sample_config(filename="../config/example_fc_config.json"):
     default_config = {
         "likelihood_type": "binned",
         "cl": [0.68, 0.90],
-        "n_toys": 200,
+        "n_toys": 500,
         "strategy": "scipy",
         "num_cores": 8,
         "verbose": 1,
         "adaptive_toys": True,
         "toy_batch_size": 200,
-        "sparsify_grid": True,
+        "sparsify_grid": False,
         "warm_start": True,
         "output_file": "fc_results",
         "save_log": True,
-        "save_directory": "../output/example_fc_output",
+        "save_directory": "output/example_fc_output",
         "use_finite_mc_correction_binned": True,
         "compute_1D_intervals": True,
         "compute_2D_intervals": True,
         "param_names": ["param1", "param2", "param3"],
-        "smooth_1d": False,
-        "smooth_2d": False
+        "smooth_1d": True,
+        "smooth_2d": True
     }
     with open(filename, 'w') as f:
         json.dump(default_config, f, indent=4)
@@ -133,24 +133,24 @@ def parse_arguments():
     # Base Hardcoded Defaults
     config = {
         "likelihood_type": "binned",
-        "cl": [0.90],
-        "n_toys": 200,
+        "cl": [0.68, 0.90],
+        "n_toys": 500,
         "strategy": "scipy",
-        "num_cores": None,
+        "num_cores": 8,
         "verbose": 1,
         "adaptive_toys": True,
         "toy_batch_size": 200,
-        "sparsify_grid": True,
+        "sparsify_grid": False,
         "warm_start": True,
-        "output_file": None,
-        "save_log": False,
-        "save_directory": "fc_output",
+        "output_file": "fc_results",
+        "save_log": True,
+        "save_directory": "output/example_fc_output",
         "use_finite_mc_correction_binned": True,
         "compute_1D_intervals": True,
         "compute_2D_intervals": True,
         "param_names": ["param1", "param2", "param3"],
-        "smooth_1d": False,
-        "smooth_2d": False
+        "smooth_1d": True,
+        "smooth_2d": True
     }
     
     if hasattr(args, 'config_file'):
