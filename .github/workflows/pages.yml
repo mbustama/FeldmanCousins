@@ -48,7 +48,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           # Ensure this path matches where Sphinx outputs your HTML files
-          path: 'docs/_build/html'
+          path: 'docs/build/html'
 
       - name: Deploy to GitHub Pages
         id: deployment
