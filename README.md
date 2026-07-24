@@ -50,7 +50,7 @@ PyFC requires **Python 3.8+**. Core dependencies include:
 Clone the repository and install via `pip` to automatically resolve and install all dependencies:
 
 ```bash
-git clone https://github.com/mbustama/FeldmanCousins.git
+git clone [https://github.com/mbustama/FeldmanCousins.git](https://github.com/mbustama/FeldmanCousins.git)
 cd FeldmanCousins
 pip install -e .
 ```
@@ -101,30 +101,32 @@ python -m pyfc.generate_config
 
 The script will prompt you with questions regarding your likelihood type, number of toys, parallelization preferences, and smoothing options. It validates your inputs and writes a file (by default, `fc_config.json`) to your current working directory.
 
+*(Note: The interactive CLI prioritizes execution speed and may present slightly different default choices—such as enabling grid sparsification by default—compared to the base framework's hardcoded defaults).*
+
 **Example `fc_config.json` Default Values:**
 *(Note: If you omit passing a configuration dictionary to the orchestrator, the framework relies on these embedded fallback defaults).*
 
 ```json
 {
     "likelihood_type": "binned",
-    "cl": [0.9],
-    "n_toys": 200,
+    "cl": [0.68, 0.90],
+    "n_toys": 500,
     "strategy": "scipy",
-    "num_cores": null,
+    "num_cores": 8,
     "verbose": 1,
     "adaptive_toys": true,
     "toy_batch_size": 200,
-    "sparsify_grid": true,
+    "sparsify_grid": false,
     "warm_start": true,
-    "output_file": null,
-    "save_log": false,
-    "save_directory": "fc_output",
+    "output_file": "fc_results",
+    "save_log": true,
+    "save_directory": "output/example_fc_output",
     "use_finite_mc_correction_binned": true,
     "compute_1D_intervals": true,
     "compute_2D_intervals": true,
     "param_names": ["param1", "param2", "param3"],
-    "smooth_1d": false,
-    "smooth_2d": false
+    "smooth_1d": true,
+    "smooth_2d": true
 }
 ```
 
@@ -228,23 +230,23 @@ results = compute_fc_intervals(
 | Parameter | Description | Allowed Values | Default |
 | :--- | :--- | :--- | :--- |
 | `likelihood_type` | Evaluates models via Poisson bins or Extended Unbinned Maximum Likelihood. | `"binned"`, `"unbinned"` | `"binned"` |
-| `cl` | Confidence Levels determining exact frequentist coverage integration targets. Dynamically sized; output keys in .npz will automatically match the provided levels (e.g., `1d_accepted_p1_0.9` for 0.90). | List of floats `(0.0, 1.0)` | `[0.90]` |
-| `n_toys` | Monte Carlo pseudo-experiments generated per parameter space point. | Integer `> 0` | `200` |
+| `cl` | Confidence Levels determining exact frequentist coverage integration targets. Dynamically sized; output keys in .npz will automatically match the provided levels (e.g., `1d_accepted_p1_0.9` for 0.90). | List of floats `(0.0, 1.0)` | `[0.68, 0.90]` |
+| `n_toys` | Monte Carlo pseudo-experiments generated per parameter space point. | Integer `> 0` | `500` |
 | `strategy` | Optimizer used for finding global and conditional likelihood minima. | `"scipy"`, `"ultranest"`, `"hybrid"`, `"grid"` | `"scipy"` |
 | `use_finite_mc_correction_binned` | Shifts Poisson likelihood to a Negative Binomial to account for finite simulation stats. | `True`, `False` | `True` |
 | `compute_1D_intervals` | Toggles 1D limits mapping. | `True`, `False` | `True` |
 | `compute_2D_intervals` | Toggles joint 2D contour scanning and edge tracing. | `True`, `False` | `True` |
-| `num_cores` | Thread/process count for parallel toy generation. `null` (None) maps to max hardware threads. | Integer `>= 0` | `null` |
+| `num_cores` | Thread/process count for parallel toy generation. `null` (None) maps to max hardware threads. | Integer `>= 0` | `8` |
 | `verbose` | Logging detail level. | `0` (Silent), `1`, `2` (Debug) | `1` |
 | `warm_start` | Checkpoints interim state to `.npz` files to recover from preemptions. | `True`, `False` | `True` |
 | `param_names` | Labels mapping the physical parameters for plotting outputs. Supports raw LaTeX (e.g., `[r"$\Phi$", r"$\gamma$"]`). | List of strings | `["param1", "param2", ...]` |
-| `smooth_1d` | If True, applies default Gaussian kernel smoothing to 1D limit profiles in plots. | `True`, `False` | `False` |
-| `smooth_2d` | If True, applies default interpolation smoothing to final 2D contour graphics. | `True`, `False` | `False` |
+| `smooth_1d` | If True, applies default Gaussian kernel smoothing to 1D limit profiles in plots. | `True`, `False` | `True` |
+| `smooth_2d` | If True, applies default interpolation smoothing to final 2D contour graphics. | `True`, `False` | `True` |
 | `adaptive_toys` | Dynamically stops toy generation early if a grid point is definitively excluded, saving compute time. | `True`, `False` | `True` |
 | `toy_batch_size` | Chunk size for batched array generation (optimizes memory/speed). | Integer `> 0` | `200` |
-| `sparsify_grid` | Traces contour perimeters in 2D space to skip resolving deep interior/exterior nodes. | `True`, `False` | `True` |
-| `save_log` | Pipes output directly to a persistent text log file. | `True`, `False` | `False` |
-| `save_directory` | Directory path where final results, plots, and checkpoints reside. | String (path) | `"fc_output"` |
+| `sparsify_grid` | Traces contour perimeters in 2D space to skip resolving deep interior/exterior nodes. | `True`, `False` | `False` |
+| `save_log` | Pipes output directly to a persistent text log file. | `True`, `False` | `True` |
+| `save_directory` | Directory path where final results, plots, and checkpoints reside. | String (path) | `"output/example_fc_output"` |
 | `output_file` | Prefix for the serialized `.npz` and `.json` result data structures. | String | `"fc_results"` |
 
 ---
@@ -286,11 +288,11 @@ When Monte Carlo templates are generated from limited statistics, treating the e
 
 ### Contour Edge Tracing (`sparsify_grid`)
 Calculating $N_{\text{toys}}$ for every node in a $100 \times 100$ 2D grid is computationally wasteful. Enabling `sparsify_grid` activates a heuristic algorithm:
-1. Calculates $t_{\text{data}}$ everywhere.
-2. Selects a sparse, widely spaced sub-grid and generates complete toy distributions to find exact $t_{\text{critical}}$ values at those sparse nodes.
-3. Fits a Scipy `RectBivariateSpline` to interpolate the critical threshold surface.
+1. Selects a sparse, widely spaced sub-grid of coordinate nodes.
+2. Evaluates the data test statistic ($t_{\text{data}}$) and generates complete toy distributions to find exact thresholds ($t_{\text{critical}}$) *only* at those sparse nodes.
+3. Fits a Scipy `RectBivariateSpline` to interpolate the critical threshold surface across the rest of the grid.
 4. Locates the decision boundary (the "edge" of the contour where $t_{\text{data}} \approx t_{\text{critical}}$).
-5. Only evaluates the expensive MC toys on the specific high-resolution cells lying strictly on this perimeter to perfect the contour edge, drastically cutting runtime.
+5. Evaluates exact data fits and expensive MC toys on the specific high-resolution cells lying strictly on this perimeter to perfect the contour edge, drastically cutting runtime.
 
 ---
 
@@ -359,10 +361,10 @@ Feldman-Cousins calculations are highly resource-intensive and often run on shar
 
 If your script is interrupted, simply run it again. PyFC will detect the `checkpoint_fc.npz` file, rigorously verify that your newly requested parameter grids match the saved geometry exactly, and seamlessly resume toy generation from the exact point of interruption.
 
-**Critical Restart Warning:** While PyFC verifies your grid dimensions on restart, it does *not* rigorously verify hyperparameter modifications. If you alter settings like `strategy`, `likelihood_type`, or `n_toys` mid-run, you **must** manually delete the `fc_output/checkpoint_fc.npz` file before running again, otherwise, the system will permanently merge structurally corrupted pseudo-experiment p-values into your finalized thresholds. 
+**Critical Restart Warning:** While PyFC verifies your grid dimensions on restart, it does *not* rigorously verify hyperparameter modifications. If you abort a run and alter settings like `strategy`, `likelihood_type`, or `n_toys`, you **must** manually delete the `checkpoint_fc.npz` file before running again, otherwise, the system will permanently merge structurally corrupted pseudo-experiment p-values into your finalized thresholds. *(Note: Manual deletion is only necessary for aborted or preempted runs; successfully completed runs automatically clean up their checkpoint files).*
 
 ### Stored Results & Custom Plotting
-Upon successful completion, the pipeline outputs final structures directly to your `save_directory` (default: `fc_output/`):
+Upon successful completion, the pipeline outputs final structures directly to your `save_directory` (default: `output/example_fc_output/`):
 * **`fc_results.json`**: A dictionary containing structural metadata, evaluated interval bounds, exact confidence levels, the global unconditional best-fit coordinate, and the explicit `data_uncond_nll` required for cross-model ratio comparisons. **Important:** The internal keys nested under `"1d_intervals"` and `"2d_intervals"` are strictly mapped by integer index (e.g., `"param1"`, `"param2"`), entirely ignoring any custom string values you passed to the `param_names` configuration list. 
 * **`fc_results.npz`**: A highly compressed NumPy archive containing exact parameter matrices and boolean masks. The keys are built dynamically based on the integer index of the parameter arrays:
 
@@ -387,7 +389,7 @@ import matplotlib.pyplot as plt
 import json
 
 # 1. Load the numerical matrices
-results = np.load('fc_output/fc_results.npz')
+results = np.load('output/example_fc_output/fc_results.npz')
 X = results['grid_p1']
 Y = results['grid_p2']
 
@@ -398,7 +400,7 @@ X_mesh, Y_mesh = np.meshgrid(X, Y, indexing='ij')
 mask_90 = results['2d_accepted_p1p2_0.9'] 
 
 # 2. Load the metadata
-with open('fc_output/fc_results.json', 'r') as f:
+with open('output/example_fc_output/fc_results.json', 'r') as f:
     meta = json.load(f)
 best_fit = meta['best_fit']
 
