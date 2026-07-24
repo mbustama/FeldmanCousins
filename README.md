@@ -19,19 +19,14 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
 ## Table of Contents
 1. [Installation](#installation)
 2. [File Tree](#file-tree)
-3. [Quick Start Guide](#quick-start-guide)
-    * [Defining Physics Models](#defining-physics-models)
-    * [Method 1: Direct Python Execution](#method-1-direct-python-execution)
-    * [Method 2: Execution via JSON Config](#method-2-execution-via-json-config)
-4. [Configuration Parameters (CLI / JSON)](#configuration-parameters-cli--json)
-5. [Statistical Methodology & Mathematics](#statistical-methodology--mathematics)
-    * [The Profile Likelihood Ratio](#the-profile-likelihood-ratio)
-    * [Binned Likelihood (Poisson & Finite MC)](#binned-likelihood)
-    * [Extended Unbinned Maximum Likelihood](#unbinned-likelihood)
-    * [Empirical Coverage (Toy Generation)](#empirical-coverage-and-toy-generation)
-    * [2D Contour Sparsification](#2d-contour-sparsification)
-6. [Common Recipes and Questions](#common-recipes-and-questions)
-7. [How to Cite](#how-to-cite)
+3. [Configuration & generate_config.py](#configuration--generate_configpy)
+4. [Quick Start Guide](#quick-start-guide)
+5. [Configuration Parameters (CLI / JSON)](#configuration-parameters-cli--json)
+6. [Execution Strategies & Algorithmic Optimizations](#execution-strategies--algorithmic-optimizations)
+7. [Statistical Methodology & Mathematics](#statistical-methodology--mathematics)
+8. [Outputs, Plots, and Checkpointing](#outputs-plots-and-checkpointing)
+9. [Common Recipes and Questions](#common-recipes-and-questions)
+10. [How to Cite](#how-to-cite)
 
 ---
 
@@ -47,18 +42,70 @@ Clone the repository and install via `pip` to ensure all dependencies (NumPy, Sc
 
 ## File Tree
 
-* `binned.py` - Core mathematical formulations, NLL definitions, and parallelized grid optimizations for binned (Poisson) data.
-* `config.py` - CLI argument parsing and default configuration matrix management.
-* `generate_config.py` - Interactive command-line interface for generating robust `fc_config.json` files.
-* `optimizers.py` - Wrapper functions mapping likelihood surfaces to SciPy (L-BFGS-B) and UltraNest minimizers.
-* `orchestrator.py` - The central execution hub linking models, data, and toy generators to build the FC contours.
-* `plotting.py` - Visualization tools for rendering 1D parameter profiles and 2D joint confidence corners.
-* `toys.py` - Multiprocessing and multithreading managers for continuous and discrete Monte Carlo pseudo-experiment generation.
-* `unbinned.py` - Core mathematical formulations and grid optimizers for the Extended Unbinned Maximum Likelihood.
+The project structure is organized modularly to separate analytical likelihood math from plotting and execution loops:
+
+    FeldmanCousins/
+    ├── pyproject.toml         # Build system and dependency specifications
+    ├── README.md              # Project documentation
+    └── src/
+        └── pyfc/
+            ├── __init__.py          # Package initialization and metadata
+            ├── binned.py            # Binned NLL math and Numba-accelerated optimizers
+            ├── config.py            # CLI argument definitions and JSON parsing
+            ├── generate_config.py   # Interactive CLI wizard for creating fc_config.json
+            ├── optimizers.py        # Wrapper functions mapping objective functions to SciPy/UltraNest
+            ├── orchestrator.py      # The main pipeline executing the Feldman-Cousins algorithm
+            ├── plotting.py          # Visualization suite for 1D profiles and 2D contours
+            ├── toys.py              # Multiprocessing engines for MC pseudo-experiment generation
+            └── unbinned.py          # Extended Unbinned Maximum Likelihood (EUML) formulations
+
+---
+
+## Configuration & generate_config.py
+
+PyFC provides an interactive command-line tool to help users build their analysis configuration files securely and without typos. 
+
+To generate a configuration file, simply run:
+    
+    python -m pyfc.generate_config
+
+The script will prompt you with questions regarding your likelihood type, number of toys, parallelization preferences, and smoothing options. It validates your inputs and writes a file (by default, `fc_config.json`) to your current working directory.
+
+**Example `fc_config.json` with Default Values:**
+
+    {
+        "likelihood_type": "binned",
+        "cl": [
+            0.68,
+            0.9
+        ],
+        "n_toys": 2000,
+        "strategy": "scipy",
+        "num_cores": 0,
+        "verbose": 1,
+        "adaptive_toys": true,
+        "toy_batch_size": 200,
+        "sparsify_grid": true,
+        "warm_start": true,
+        "output_file": "fc_results",
+        "save_log": false,
+        "save_directory": "fc_output",
+        "use_finite_mc_correction_binned": true,
+        "compute_1D_intervals": true,
+        "compute_2D_intervals": true,
+        "param_names": [
+            "param1",
+            "param2"
+        ],
+        "smooth_1d": false,
+        "smooth_2d": false
+    }
 
 ---
 
 ## Quick Start Guide
+
+*Note: The code snippets below are examples of user-defined cases. You will need to substitute the `S_model_func` and `B_model_func` functions, as well as the input grids, with your own specific physical models and parameter configurations.*
 
 ### Defining Physics Models
 The way you define your physics model depends entirely on whether your analysis is **binned** or **unbinned**.
@@ -97,9 +144,10 @@ For unbinned data, you must provide normalized probability density functions (PD
         return expon.pdf(x, scale=2.0)
 *Note: Ensure your unbinned PDF functions can accept vector (NumPy array) inputs for computational efficiency.*
 
-### Method 1: Direct Python Execution
-You can import the `compute_fc_intervals` orchestrator directly and pass your custom callable models and explicit parameter arrays.
+### Execution via JSON Config
+Once you have your models defined and your config generated, you can pass them dynamically into the central orchestrator:
 
+    import json
     import numpy as np
     from pyfc.orchestrator import compute_fc_intervals
 
@@ -114,45 +162,22 @@ You can import the `compute_fc_intervals` orchestrator directly and pass your cu
     # 2. Mock Data
     observed_counts = np.array([20, 7, 2, 0])
 
-    # 3. Execute Feldman-Cousins
-    results = compute_fc_intervals(
-        data=observed_counts,
-        S_model=S_model_func,
-        B_model=B_model_func,
-        grids=grids,
-        cl=[0.68, 0.90],
-        n_toys=1000,
-        strategy="scipy",
-        likelihood_type="binned",
-        compute_1D_intervals=True,
-        compute_2D_intervals=True,
-        param_names=["Flux Norm", "Spectral Index", "Background Norm"]
-    )
-
-### Method 2: Execution via JSON Config
-You can generate a configuration file via the CLI (`python -m pyfc.generate_config`) and ingest it dynamically.
-
-    import json
-    from pyfc.orchestrator import compute_fc_intervals
-
-    # Load the generated JSON
+    # 3. Load the generated JSON configuration
     with open('fc_config.json', 'r') as f:
         config = json.load(f)
 
-    # The orchestrator expects kwargs, so we unpack the dictionary using **
+    # 4. Execute Feldman-Cousins (unpacking the config dictionary via **)
     results = compute_fc_intervals(
         data=observed_counts,
         S_model=S_model_func,
         B_model=B_model_func,
         grids=grids,
-        **config  # Unpacks n_toys, strategy, num_cores, likelihood_type, etc.
+        **config 
     )
 
 ---
 
 ## Configuration Parameters (CLI / JSON)
-
-Whether running via the `generate_config.py` CLI or passing arguments directly into Python, PyFC accepts the following hyper-parameters to control the physics assumptions, statistics, and hardware usage:
 
 | Parameter | Description | Allowed Values | Default |
 | :--- | :--- | :--- | :--- |
@@ -178,14 +203,37 @@ Whether running via the `generate_config.py` CLI or passing arguments directly i
 
 ---
 
+## Execution Strategies & Algorithmic Optimizations
+
+PyFC provides several comprehensive levers to optimize computation time versus robustness based on the complexity of your likelihood surface.
+
+### Optimizer Strategy (`strategy`)
+*   **`"scipy"` (L-BFGS-B)**: Highly recommended for most physics applications. It utilizes bounding constraints and analytical approximations of the gradient to find likelihood minima incredibly quickly. It assumes a relatively smooth parameter space.
+*   **`"ultranest"`**: Utilizes Nested Sampling. Extremely robust against complex, multi-modal likelihood surfaces where standard gradient minimizers get trapped in local minima. It is much slower than SciPy but guarantees finding the global minimum.
+*   **`"hybrid"`**: A balanced approach. Uses UltraNest to find the global unconditional best-fit (which happens only once), and uses SciPy for the thousands of conditional minimizations during the profile scanning and MC toy fitting.
+*   **`"grid"`**: Brute-force scanning over the provided parameter nodes. Safest but computationally restrictive. Scales poorly with $N > 2$ dimensions.
+
+### Finite MC Corrections (`use_finite_mc_correction_binned`)
+When Monte Carlo templates are generated from limited statistics, treating the expected counts $\mu_i$ as absolute fixed truths leads to overconfidence. Enabling this flag triggers the continuous Poisson-Gamma mixture model formulation (see Mathematics section below) to strictly penalize the likelihood based on the simulated variance ($\sigma_i^2$) in each bin.
+
+### Contour Edge Tracing (`sparsify_grid`)
+Calculating $N_{\text{toys}}$ for every node in a $100 \times 100$ 2D grid is computationally wasteful. Enabling `sparsify_grid` activates a heuristic algorithm:
+1. Calculates $t_{\text{data}}$ everywhere.
+2. Selects a sparse, widely spaced sub-grid and generates complete toy distributions to find exact $t_{\text{critical}}$ values at those sparse nodes.
+3. Fits a Scipy `RectBivariateSpline` to interpolate the critical threshold surface.
+4. Locates the decision boundary (the "edge" of the contour where $t_{\text{data}} \approx t_{\text{critical}}$).
+5. Only evaluates the expensive MC toys on the specific high-resolution cells lying strictly on this perimeter to perfect the contour edge, drastically cutting runtime.
+
+---
+
 ## Statistical Methodology & Mathematics
 
-PyFC implements exact classical frequentist intervals. The code executes in excruciating detail the methodology prescribed by Gary Feldman and Robert Cousins (1998) to solve the empty-set problem near physical boundaries.
+PyFC implements exact classical frequentist intervals. The code executes the methodology prescribed by Gary Feldman and Robert Cousins (1998) to solve the empty-set problem near physical boundaries.
 
 ### The Profile Likelihood Ratio
 For a general parameter vector divided into parameters of interest $\boldsymbol{\theta}$ and nuisance parameters $\boldsymbol{\nu}$, we construct the Profile Likelihood Ratio (PLR) test statistic $t$:
 
-$$t_{\text{data}}(\boldsymbol{\theta}) = -2 \ln \frac{\mathcal{L}(\boldsymbol{\theta}, \hat{\hat{\boldsymbol{\nu}}} | \text{data})}{\mathcal{L}(\hat{\boldsymbol{\theta}}, \hat{\boldsymbol{\nu}} | \text{data})}$$
+$$t_{\text{data}}(\boldsymbol{\theta})=-2\ln\frac{\mathcal{L}(\boldsymbol{\theta},\hat{\hat{\boldsymbol{\nu}}}|\text{data})}{\mathcal{L}(\hat{\boldsymbol{\theta}},\hat{\boldsymbol{\nu}}|\text{data})}$$
 
 Where:
 * $\mathcal{L}(\hat{\boldsymbol{\theta}}, \hat{\boldsymbol{\nu}} | \text{data})$ is the unconditional Maximum Likelihood Estimate (MLE) over the entire allowed parameter space.
@@ -196,39 +244,34 @@ By construction, $t \geq 0$. Lower values indicate excellent agreement between t
 ### Binned Likelihood
 For binned configurations, the likelihood is the product of independent Poisson probabilities across $N$ bins. Dropping the data-dependent factorial constant, PyFC evaluates the Negative Log-Likelihood (NLL):
 
-$$-\ln \mathcal{L}_{\text{Poisson}} = \sum_{i=1}^{N} \left( \mu_i(\boldsymbol{\theta}) - n_i \ln \mu_i(\boldsymbol{\theta}) \right)$$
+$$-\ln\mathcal{L}_{\text{Poisson}}=\sum_{i=1}^{N}\left(\mu_i(\boldsymbol{\theta})-n_i\ln\mu_i(\boldsymbol{\theta})\right)$$
 
-**Finite Monte Carlo Correction (Beeston-Barlow):**
-If `use_finite_mc_correction_binned` is True, PyFC acknowledges that the template $\mu_i$ is derived from finite simulation statistics. The pure Poisson distribution is convoluted with a Gamma prior, shifting the likelihood to a Negative Binomial distribution:
+**Finite Monte Carlo Correction:**
+If `use_finite_mc_correction_binned` is True, the pure Poisson distribution is convoluted with a Gamma prior, shifting the likelihood to a Negative Binomial distribution:
 
-$$-\ln \mathcal{L}_{\text{FiniteMC}} = \sum_{i=1}^{N} \left( \frac{\mu_i^2}{\sigma_i^2} \ln \left( 1 + \frac{\sigma_i^2}{\mu_i} \right) - n_i \ln \left( \frac{\mu_i}{1 + \sigma_i^2 / \mu_i} \right) \right)$$
+$$-\ln\mathcal{L}_{\text{FiniteMC}}=\sum_{i=1}^{N}\left(\frac{\mu_i^2}{\sigma_i^2}\ln\left(1+\frac{\sigma_i^2}{\mu_i}\right)-n_i\ln\left(\frac{\mu_i}{1+\sigma_i^2/\mu_i}\right)\right)$$
 where $\sigma_i^2$ is the variance (sum of squared MC weights) in bin $i$.
 
 ### Extended Unbinned Maximum Likelihood
 When binning causes unacceptable information loss (e.g., highly complex kinematics with low event counts), PyFC evaluates the unbinned likelihood. Instead of bin counts, it uses the exact coordinates $x_j$ of the $M$ observed events.
 
-$$-\ln \mathcal{L}_{\text{EUML}} = N_{\text{expected}}(\boldsymbol{\theta}) - \sum_{j=1}^{M} \ln \lambda(x_j | \boldsymbol{\theta})$$
+$$-\ln\mathcal{L}_{\text{EUML}}=N_{\text{expected}}(\boldsymbol{\theta})-\sum_{j=1}^{M}\ln\lambda(x_j|\boldsymbol{\theta})$$
 where $N_{\text{expected}}$ is the integral of the total rate, and $\lambda(x_j)$ is the non-normalized rate evaluated strictly at the properties of event $j$.
 
-### Empirical Coverage and Toy Generation
-Wilks' theorem dictates that $t$ should follow a $\chi^2$ distribution. However, near physical boundaries (e.g., signal $\geq 0$), this theorem explicitly breaks down. PyFC restores exact coverage by deriving the distribution of $t$ empirically at *every* grid point.
+---
 
-1. **Null Hypothesis:** For a fixed test point $\boldsymbol{\theta}_{\text{test}}$, locate the best-fit nuisance parameters $\hat{\hat{\boldsymbol{\nu}}}$.
-2. **Pseudo-experiments (Toys):** Generate $N_{\text{toys}}$ fake datasets assuming $(\boldsymbol{\theta}_{\text{test}}, \hat{\hat{\boldsymbol{\nu}}})$ is the true state of nature.
-    * *Binned:* Draw from $N$ Poisson distributions.
-    * *Unbinned:* Bootstrap discrete events from large user-supplied MC prior arrays (`S_mc_pool`, `B_mc_pool`).
-3. **Refit:** Unconditionally and conditionally fit every single toy to calculate $t_{\text{toy}}$.
-4. **Critical Value:** Sort the $t_{\text{toy}}$ values. The threshold $t_{\text{critical}}$ for a Confidence Level $\alpha$ (e.g., 0.90) is the value at the $\alpha$-quantile. 
+## Outputs, Plots, and Checkpointing
 
-If $t_{\text{data}} \leq t_{\text{critical}}$, the point $\boldsymbol{\theta}_{\text{test}}$ is accepted into the confidence interval.
+### The Checkpoint Engine (`warm_start`)
+Feldman-Cousins calculations are highly resource-intensive and often run on shared HPC clusters subject to preemption limits (e.g., Slurm time limits). If `warm_start` is enabled, PyFC dynamically writes its state to `fc_output/checkpoint_fc.npz` after processing each grid row. 
 
-### 2D Contour Sparsification
-To map a 2D contour, generating toys at every point on an $N \times N$ grid is computationally punishing. PyFC implements a heuristic sparsification algorithm:
-1. Calculates $t_{\text{data}}$ everywhere.
-2. Selects a sparse sub-grid (e.g., every 5th node) and generates complete toy distributions to find exact $t_{\text{critical}}$ values.
-3. Fits a `RectBivariateSpline` across the sub-grid to approximate the $t_{\text{critical}}$ surface.
-4. Locates the decision boundary (where $t_{\text{data}} \approx t_{\text{critical}}$).
-5. Traces this perimeter and evaluates exact toys *only* at the high-resolution grid nodes directly adjacent to the boundary.
+If your script is interrupted, simply run it again. PyFC will detect the `checkpoint_fc.npz` file, rigorously verify that your newly requested parameter grids match the saved geometry exactly, and seamlessly resume toy generation from the exact point of interruption.
+
+### Stored Results
+Upon successful completion, the pipeline outputs final structures directly to your `save_directory` (default: `fc_output/`):
+* **`fc_results.npz`**: A highly compressed NumPy archive containing raw matrices for $t_{\text{data}}$, interpolated $t_{\text{critical}}$ surfaces, profiled nuisance parameters, and boolean acceptance masks across all configurations.
+* **`fc_results.json`**: A human-readable dictionary summarizing the exact thresholds and limits, properly formatted with standard Python datatypes for web frameworks or cross-language ingestion.
+* **`corner_plot.png`**: (And assorted 1D/2D projection images, generated via `plotting.py`) displaying your localized best-fit points alongside the extracted 68% and 90% CL limit contours mapped over your parameter space.
 
 ---
 
@@ -237,17 +280,8 @@ To map a 2D contour, generating toys at every point on an $N \times N$ grid is c
 **Q: How many toys should I use?**
 A: For a 68% CL interval (1-sigma), 500-1000 toys are often sufficient. For a 90% or 95% limit, 2000-5000 toys are required to smoothly resolve the tail of the test statistic distribution. Ensure `n_toys` is large enough that $N_{\text{toys}} \times (1 - \alpha) \gg 1$.
 
-**Q: Which optimizer strategy should I choose?**
-A: 
-*   `"scipy"` (L-BFGS-B): The default. Extremely fast, utilizing gradient information. Best for smooth likelihood surfaces.
-*   `"ultranest"`: Slower but virtually immune to local minima. Use this if your parameters are highly correlated or your likelihood surface has multiple distinct valleys.
-*   `"grid"`: Brute-force scanning. The safest but slowest option. Often used strictly for 1D projections.
-
 **Q: I have a parameter that represents a systematic uncertainty. How do I profile it?**
 A: Simply pass a `np.linspace()` grid for that parameter into the `grids` list. PyFC automatically profiles (maximizes) all parameters in the `grids` list that are not currently fixed as the specific parameters of interest during 1D or 2D conditional scanning.
-
-**Q: What happens if my job gets killed on the cluster?**
-A: Ensure `warm_start=True`. PyFC frequently saves the computational state to a `checkpoint_fc.npz` matrix. If you restart the script with the exact same grid geometry, it will load the checkpoint and resume toy generation exactly where it left off.
 
 ---
 
@@ -257,4 +291,6 @@ If you utilize PyFC in your academic work or scientific publications, please cit
 
 Bustamante, M. (2026). *PyFC: A Python Framework for Feldman-Cousins Confidence Intervals*. GitHub Repository: https://github.com/mbustama/FeldmanCousins.
 
-*(If applicable, please also cite the original methodology paper: Feldman, G. J., & Cousins, R. D. (1998). Unified approach to the classical statistical analysis of small signals. Physical Review D, 57(7), 3873.)*
+**Methodology References:**
+* Feldman, G. J., & Cousins, R. D. (1998). Unified approach to the classical statistical analysis of small signals. *Physical Review D, 57*(7), 3873.
+* Argüelles, C. A., Schneider, A., & Yuan, T. (2019). A binned likelihood for stochastic models. *Journal of High Energy Physics*, 2019(6), 1-18. [arXiv:1901.04645](https://arxiv.org/abs/1901.04645).
