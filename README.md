@@ -41,9 +41,11 @@ PyFC requires **Python 3.8+**. Core dependencies include:
 * `numpy >= 1.20`
 * `scipy`
 * `numba`
-* `ultranest`
-* `corner`
 * `matplotlib`
+
+**Optional Dependencies:**
+* `ultranest` (Required for utilizing the nested sampling optimizer)
+* `tqdm` (Provides progress bars during execution)
 
 Clone the repository and install via `pip` to automatically resolve and install all dependencies:
 
@@ -92,7 +94,7 @@ FeldmanCousins/
 
 PyFC provides an interactive command-line tool to help users build their analysis configuration files securely and without typos. 
 
-To generate a configuration file, simply run:
+Once PyFC is installed via `pip`, the package modules become available globally in your Python environment. To interactively generate a configuration file from anywhere, simply run:
     
 ```bash
 python -m pyfc.generate_config
@@ -100,33 +102,28 @@ python -m pyfc.generate_config
 
 The script will prompt you with questions regarding your likelihood type, number of toys, parallelization preferences, and smoothing options. It validates your inputs and writes a file (by default, `fc_config.json`) to your current working directory.
 
-**Example `fc_config.json` with Default Values:**
+**Example `fc_config.json` Default Values:**
+*(Note: If you omit passing a configuration dictionary to the orchestrator, the framework relies on these embedded fallback defaults).*
 
 ```json
 {
     "likelihood_type": "binned",
-    "cl": [
-        0.68,
-        0.9
-    ],
-    "n_toys": 2000,
+    "cl": [0.9],
+    "n_toys": 200,
     "strategy": "scipy",
-    "num_cores": 0,
+    "num_cores": null,
     "verbose": 1,
     "adaptive_toys": true,
     "toy_batch_size": 200,
     "sparsify_grid": true,
     "warm_start": true,
-    "output_file": "fc_results",
+    "output_file": null,
     "save_log": false,
     "save_directory": "fc_output",
     "use_finite_mc_correction_binned": true,
     "compute_1D_intervals": true,
     "compute_2D_intervals": true,
-    "param_names": [
-        "param1",
-        "param2"
-    ],
+    "param_names": ["param1", "param2", "param3"],
     "smooth_1d": false,
     "smooth_2d": false
 }
@@ -136,97 +133,91 @@ The script will prompt you with questions regarding your likelihood type, number
 
 ## Quick Start Guide
 
-*Note: The code snippets below are examples of user-defined cases. You will need to substitute the models and input grids with your own specific physical models and parameter configurations. See the `examples/` directory in the repository for full, runnable end-to-end scripts demonstrating complex binned and unbinned atmospheric fits.*
+Because PyFC evaluates abstract $N$-dimensional grids, you **must** supply Python functions instructing the framework how to mathematically map a coordinate in parameter space to your physical expectations. 
 
-### Defining Physics Models
-The way you define your physics model depends entirely on whether your analysis is **binned** or **unbinned**.
+*(See the `examples/fc_tutorial.py` script in the repository for full, runnable end-to-end examples.)*
 
-**1. Binned Models**
-For a phenomenological analysis, your models should be parameterized functions (callables) that map your physics parameters to 1D numpy arrays representing expected event counts per bin. 
-*(Crucially: The output length and shape of your model functions must strictly match the shape of the `observed_counts` data array passed to the orchestrator to avoid broadcasting errors. Tip: Your custom functions must return strict NumPy arrays. Standard Python lists will not be automatically cast.)*
+### 1. Binned Models
+For a binned analysis, `S_model` and `B_model` are passed as standard NumPy arrays representing fixed templates. You must write a `compute_rates_func` that combines them with your varied parameters to yield the total expected bin counts ($\mu$) and variances ($\sigma^2$).
 
-```python
-import numpy as np
-
-def S_model_func(flux_norm, spectral_index):
-    """
-    Calculates the expected signal array across energy bins.
-    These parameters will map directly to the parameter grids defined in the orchestrator.
-    """
-    energy_bins = np.array([10.0, 100.0, 1000.0, 10000.0])
-    return flux_norm * (energy_bins ** -spectral_index)
-
-def B_model_func(bg_norm):
-    """
-    Calculates the expected background array based on a scaling parameter.
-    """
-    nominal_atmospheric_bg = np.array([15.0, 5.0, 1.0, 0.1])
-    return bg_norm * nominal_atmospheric_bg
-```
-
-**2. Unbinned Models**
-For unbinned data, you must provide normalized probability density functions (PDFs) that can evaluate an array of kinematic coordinates (events) and return the probability density at each point. You must also provide a function that calculates the total expected event integral $N_{\text{expected}}$ across your parameter space.
-*(Tip: If you wish to compile your unbinned continuous PDFs using Numba (`@njit`) to maximize evaluation speed, you must use pure NumPy mathematical expressions, as `scipy.stats` distributions are generally not Numba-compatible).*
+*(Crucially: If you rely on Numba's maximum parallelization via the `"grid"` strategy or massive thread pools, your `compute_rates_func` **must** be decorated with `@njit`.)*
 
 ```python
 import numpy as np
-
-def S_model_pdf(events):
-    """
-    Signal PDF for multi-dimensional unbinned events.
-    'events' is a 2D array of shape (N_events, 2)
-    """
-    energy = events[:, 0]
-    zenith = events[:, 1]
-    
-    # Evaluate density using pure NumPy (Numba-compatible)
-    prob_e = (1.0 / np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((energy - 5.0) / 1.0)**2)
-    prob_z = (1.0 / (0.5 * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((zenith - 0.0) / 0.5)**2)
-    return prob_e * prob_z
-
-def N_expected_func(flux_norm, bg_norm):
-    """
-    Returns the total expected number of events for the EUML formulation.
-    """
-    signal_integral = flux_norm * 500.0
-    bg_integral = bg_norm * 1200.0
-    return signal_integral + bg_integral
-```
-
-### Execution via JSON Config
-Once you have your models defined and your config generated, you can pass them dynamically into the central orchestrator. 
-*(Crucially: The JSON configuration file only dictates the hyperparameters of the algorithm. You must still pass your physical data, models, and spatial grids explicitly in your Python script. Note: If you choose not to use the CLI tool and omit passing a `**config` dictionary, the orchestrator will safely fall back to a set of hard-coded default hyperparameters.)*
-
-```python
 import json
-import numpy as np
+from numba import njit
 from pyfc.orchestrator import compute_fc_intervals
 
-# 1. Define physical grids (the parameter space to scan)
-# These grids correspond sequentially to the inputs of your model functions
-grids = [
-    np.linspace(1e-9, 1e-7, 20), # Param 1: flux_norm
-    np.linspace(2.0, 3.0, 15),   # Param 2: spectral_index
-    np.linspace(0.8, 1.2, 10)    # Param 3: bg_norm (nuisance parameter)
-]
+# A) Define the physics mapper function
+@njit(fastmath=True, nogil=True)
+def my_compute_rates_binned(params, S_template, B_template, S_sigma2, B_sigma2):
+    """ Maps parameters to expected counts (mu) and simulated variances (sigma2). """
+    # Example: params[0] = flux_norm, params[1] = spectral_index, params[2] = bg_norm
+    mu = (params[0] * params[1]) * S_template + params[2] * B_template
+    sigma2 = ((params[0] * params[1])**2) * S_sigma2 + (params[2]**2) * B_sigma2
+    return mu, sigma2
 
-# 2. Mock Data
+# B) Setup Data and Arrays
+grids = [np.linspace(1e-9, 1e-7, 20), np.linspace(2.0, 3.0, 15), np.linspace(0.8, 1.2, 10)]
+S_template = np.array([0.1, 0.5, 2.0, 5.0])
+B_template = np.array([15.0, 5.0, 1.0, 0.1])
 observed_counts = np.array([20, 7, 2, 0])
 
-# 3. Load the generated JSON configuration hyperparameters
 with open('fc_config.json', 'r') as f:
     config = json.load(f)
 
-# 4. Execute Feldman-Cousins (unpacking the config dictionary via **)
-# Note: If you only have a single unified physics model instead of separate 
-# S/B models, simply pass S_model=unified_model_func and B_model=None.
-# For unbinned runs, pass your N_expected_func via the N_expected kwarg.
+# C) Execute
 results = compute_fc_intervals(
     data=observed_counts,
-    S_model=S_model_func,
-    B_model=B_model_func,
+    S_model=S_template,
+    B_model=B_template,
     grids=grids,
-    poi_indices=[0, 1], # Explicitly scans Param 1 & 2, profiling Param 3
+    compute_rates_func=my_compute_rates_binned,
+    **config 
+)
+```
+
+### 2. Unbinned Models
+For unbinned data, `S_model` and `B_model` are Python functions that evaluate PDFs over exact kinematic coordinates. You must provide a `compute_rates_func` to yield the overall expected integral and localized probability density, alongside a `generate_toy_func` that handles parametric bootstrapping.
+
+*(Note: Unbinned operations utilize `ProcessPoolExecutor` to bypass the GIL. Ensure your custom functions are defined at the top-level of your script so Python can serialize them across processes.)*
+
+```python
+import numpy as np
+from scipy.stats import norm, expon
+
+# A) Define PDF structures
+def s_pdf(x): return norm.pdf(x, loc=5.0, scale=1.0)
+def b_pdf(x): return expon.pdf(x, scale=2.0)
+
+# B) Define the physics mapper function
+def my_compute_rates_unbinned(params, s_probs, b_probs):
+    """ Returns total extended integral and unnormalized per-event density. """
+    expected_total = params[0] * params[1] + params[2]
+    # Edge case protection for zero events
+    if len(s_probs) == 0 and len(b_probs) == 0:
+        return expected_total, np.array([])
+    p_events = params[0] * params[1] * s_probs + params[2] * b_probs
+    return expected_total, p_events
+
+# C) Define the toy generator
+def my_generate_unbinned_toy(true_params, S_mc_pool, B_mc_pool):
+    """ Handles generating mock event geometries based on physical parameters. """
+    n_sig = np.random.poisson(true_params[0] * true_params[1])
+    n_bkg = np.random.poisson(true_params[2])
+    parts = []
+    if n_sig > 0: parts.append(np.random.choice(S_mc_pool, size=n_sig, replace=True))
+    if n_bkg > 0: parts.append(np.random.choice(B_mc_pool, size=n_bkg, replace=True))
+    return np.concatenate(parts) if parts else np.array([])
+
+# D) Execute
+results = compute_fc_intervals(
+    data=observed_events, # Shape: (N_events, D_features)
+    S_model=s_pdf,
+    B_model=b_pdf,
+    grids=grids,
+    compute_rates_func=my_compute_rates_unbinned,
+    generate_toy_func=my_generate_unbinned_toy,
     **config 
 )
 ```
@@ -238,18 +229,18 @@ results = compute_fc_intervals(
 | Parameter | Description | Allowed Values | Default |
 | :--- | :--- | :--- | :--- |
 | `likelihood_type` | Evaluates models via Poisson bins or Extended Unbinned Maximum Likelihood. | `"binned"`, `"unbinned"` | `"binned"` |
-| `cl` | Confidence Levels determining exact frequentist coverage integration targets. Dynamically sized; output keys in .npz will automatically match the provided levels (e.g., `mask_1d_95` for 0.95). | List of floats `(0.0, 1.0)` | `[0.68, 0.90]` |
-| `n_toys` | Monte Carlo pseudo-experiments generated per parameter space point. | Integer `> 0` | `2000` |
+| `cl` | Confidence Levels determining exact frequentist coverage integration targets. Dynamically sized; output keys in .npz will automatically match the provided levels (e.g., `1d_accepted_p1_0.9` for 0.90). | List of floats `(0.0, 1.0)` | `[0.90]` |
+| `n_toys` | Monte Carlo pseudo-experiments generated per parameter space point. | Integer `> 0` | `200` |
 | `strategy` | Optimizer used for finding global and conditional likelihood minima. | `"scipy"`, `"ultranest"`, `"hybrid"`, `"grid"` | `"scipy"` |
 | `use_finite_mc_correction_binned` | Shifts Poisson likelihood to a Negative Binomial to account for finite simulation stats. | `True`, `False` | `True` |
-| `compute_1D_intervals` | Toggles profiling nuisance parameters for 1D parameter limits. | `True`, `False` | `True` |
+| `compute_1D_intervals` | Toggles 1D limits mapping. | `True`, `False` | `True` |
 | `compute_2D_intervals` | Toggles joint 2D contour scanning and edge tracing. | `True`, `False` | `True` |
-| `num_cores` | Thread/process count for parallel toy generation. `0` maps to max hardware threads. | Integer `>= 0` | `0` (Max) |
+| `num_cores` | Thread/process count for parallel toy generation. `null` (None) maps to max hardware threads. | Integer `>= 0` | `null` |
 | `verbose` | Logging detail level. | `0` (Silent), `1`, `2` (Debug) | `1` |
 | `warm_start` | Checkpoints interim state to `.npz` files to recover from preemptions. | `True`, `False` | `True` |
 | `param_names` | Labels mapping the physical parameters for plotting outputs. Supports raw LaTeX (e.g., `[r"$\Phi$", r"$\gamma$"]`). | List of strings | `["param1", "param2", ...]` |
-| `smooth_1d` | If True, applies default Gaussian kernel smoothing to 1D limit profiles in plots. (Support for custom scalar intensity is planned). | `True`, `False` | `False` |
-| `smooth_2d` | If True, applies default interpolation smoothing to final 2D contour graphics. (Support for custom scalar intensity is planned). | `True`, `False` | `False` |
+| `smooth_1d` | If True, applies default Gaussian kernel smoothing to 1D limit profiles in plots. | `True`, `False` | `False` |
+| `smooth_2d` | If True, applies default interpolation smoothing to final 2D contour graphics. | `True`, `False` | `False` |
 | `adaptive_toys` | Dynamically stops toy generation early if a grid point is definitively excluded, saving compute time. | `True`, `False` | `True` |
 | `toy_batch_size` | Chunk size for batched array generation (optimizes memory/speed). | Integer `> 0` | `200` |
 | `sparsify_grid` | Traces contour perimeters in 2D space to skip resolving deep interior/exterior nodes. | `True`, `False` | `True` |
@@ -264,7 +255,7 @@ results = compute_fc_intervals(
 PyFC provides several comprehensive levers to optimize computation time versus robustness based on the complexity of your likelihood surface.
 
 ```text
-[Orchestrator] --> Defines Grids & POIs
+[Orchestrator] --> Iterates over Grids
      |
      v
 [Optimizer] -----> Evaluates t_data at Data
@@ -280,7 +271,9 @@ PyFC provides several comprehensive levers to optimize computation time versus r
 ```
 
 ### Handling Multi-Dimensional Parameter Spaces
-PyFC is built to handle arbitrary $N$-dimensional physics models. You provide the full parameter space via the `grids` argument. By passing `poi_indices` to the orchestrator, you designate which dimensions serve as the primary Parameters of Interest (POIs) for the 1D/2D intervals. The algorithm seamlessly profiles (maximizes the likelihood over) all non-POI dimensions at every point during both the data fitting and the empirical toy generation phases.
+PyFC is built to handle arbitrary $N$-dimensional physics models. You provide the full parameter space via the `grids` argument. The orchestrator automatically evaluates your parameter space systematically:
+* **1D Intervals:** The framework iterates through every single parameter provided in the `grids` list. For each parameter, it treats it as the primary dimension while automatically profiling (maximizing the likelihood over) all other parameters.
+* **2D Intervals:** The framework automatically generates and scans every unique pair of parameters from your `grids`, profiling out the remaining parameters not included in that specific 2D combination.
 
 ### Optimizer Strategy (`strategy`)
 *   **`"scipy"` (L-BFGS-B)**: Highly recommended for most physics applications. It utilizes bounding constraints and analytical approximations of the gradient to find likelihood minima incredibly quickly. It assumes a relatively smooth parameter space. *Bounds Logistics:* Bounds are automatically inferred from the minimum and maximum values of the corresponding parameter arrays you pass in the `grids` list. You do not need to pass a separate bounds argument.
@@ -309,7 +302,7 @@ PyFC is explicitly engineered to scale across multi-core High-Performance Comput
 *   **Unbinned Likelihoods**: Utilizes Python's `concurrent.futures.ProcessPoolExecutor` to spawn independent worker processes for continuous function evaluation.
 
 **HPC Do's and Don'ts:**
-*   **DO map `num_cores` to your Slurm/PBS allocations.** If you set `num_cores=0` (default), PyFC requests all available threads on the hardware. If running via a Slurm workload manager, it is highly recommended to explicitly pass the allocated CPUs to avoid overcommitting: 
+*   **DO map `num_cores` to your Slurm/PBS allocations.** If you set `num_cores=0` (or leave it `null` / `None`), PyFC requests all available threads on the hardware. If running via a Slurm workload manager, it is highly recommended to explicitly pass the allocated CPUs to avoid overcommitting: 
     ```python
     import os
     config['num_cores'] = int(os.environ.get('SLURM_CPUS_PER_TASK', 0))
@@ -320,6 +313,9 @@ PyFC is explicitly engineered to scale across multi-core High-Performance Comput
 
 ### Advanced Integrations
 Note that PyFC's native parallelization logic maps threads and processes strictly within a single node's resource limits. Multi-node distribution (e.g., communicating via MPI) is not natively built into the `orchestrator`. Users requiring cluster-wide multi-node deployment should consider manually sharding their `grids` and wrapping `compute_fc_intervals` within an `mpi4py` communicator.
+
+**Note on UltraNest:**
+If utilizing UltraNest for unbinned likelihoods via `strategy="ultranest"`, be aware that the `ProcessPoolExecutor` explicitly overrides the GIL, meaning each core evaluates its own entirely isolated UltraNest sampler sequence. PyFC does not use MPI-based sampler sharing under the hood; the nested sampling operates completely localized to the spawned sub-process during the toy fits. 
 
 ---
 
@@ -364,23 +360,27 @@ Feldman-Cousins calculations are highly resource-intensive and often run on shar
 
 If your script is interrupted, simply run it again. PyFC will detect the `checkpoint_fc.npz` file, rigorously verify that your newly requested parameter grids match the saved geometry exactly, and seamlessly resume toy generation from the exact point of interruption.
 
+**Critical Restart Warning:** While PyFC verifies your grid dimensions on restart, it does *not* rigorously verify hyperparameter modifications. If you alter settings like `strategy`, `likelihood_type`, or `n_toys` mid-run, you **must** manually delete the `fc_output/checkpoint_fc.npz` file before running again, otherwise, the system will permanently merge structurally corrupted pseudo-experiment p-values into your finalized thresholds. 
+
 ### Stored Results & Custom Plotting
 Upon successful completion, the pipeline outputs final structures directly to your `save_directory` (default: `fc_output/`):
-* **`fc_results.npz`**: A highly compressed NumPy archive containing raw matrices and boolean masks.
-* **`fc_results.json`**: A dictionary containing structural metadata, exact confidence levels, and the global unconditional best-fit coordinate.
+* **`fc_results.json`**: A dictionary containing structural metadata, evaluated interval bounds, exact confidence levels, the global unconditional best-fit coordinate, and the explicit `data_uncond_nll` required for cross-model ratio comparisons. **Important:** The internal keys nested under `"1d_intervals"` and `"2d_intervals"` are strictly mapped by integer index (e.g., `"param1"`, `"param2"`), entirely ignoring any custom string values you passed to the `param_names` configuration list. 
+* **`fc_results.npz`**: A highly compressed NumPy archive containing exact parameter matrices and boolean masks. The keys are built dynamically based on the integer index of the parameter arrays:
 
-**Available `.npz` Keys:**
+**Available `.npz` Keys (Where `{i}` and `{j}` correspond to 1-based grid array indices like 1, 2, 3):**
 
 | Key | Description | Shape |
 | :--- | :--- | :--- |
-| `grid_x`, `grid_y` | 2D parameter space meshgrids for plotting. | `(N, M)` |
-| `t_data` | PLR test statistic evaluated on the real data. | `(N, M)` |
-| `t_critical_68`, `t_critical_90` | Interpolated MC threshold surfaces. | `(N, M)` |
-| `acceptance_68`, `acceptance_90` | 2D boolean masks (True = inside contour). | `(N, M)` |
-| `mask_1d_68`, `mask_1d_90` | 1D boolean limits profiling other parameters. | `(N,)` or `(M,)` |
+| `grid_p{i}` | 1D parameter space meshgrid evaluating parameter `i`. | `(N,)` |
+| `1d_t_data_p{i}` | 1D PLR test statistic evaluated on the real data. | `(N,)` |
+| `1d_t_critical_p{i}_{cl}` | 1D Interpolated MC threshold surface limits. | `(N,)` |
+| `1d_accepted_p{i}_{cl}` | 1D boolean limits profiling other parameters. | `(N,)` |
+| `2d_t_data_p{i}p{j}` | 2D PLR test statistic evaluating a joint region. | `(N, M)` |
+| `2d_t_critical_p{i}p{j}_{cl}` | 2D threshold surfaces for the combination. | `(N, M)` |
+| `2d_accepted_p{i}p{j}_{cl}` | 2D boolean masks (True = inside contour). | `(N, M)` |
 
 **Code Snippet: Generating Custom Contours**
-While PyFC automatically saves default plots, you will likely want to format your own figures for publication. You can easily ingest the output files to do so. (Note: To access 1D limits instead of 2D contours, simply extract `mask_1d_90` and plot it against a 1D slice of your physical grid).
+While PyFC automatically saves default matrix plots via Matplotlib, you will likely want to format your own figures for publication. You can easily ingest the output files to do so. 
 
 ```python
 import numpy as np
@@ -389,9 +389,14 @@ import json
 
 # 1. Load the numerical matrices
 results = np.load('fc_output/fc_results.npz')
-X = results['grid_x']
-Y = results['grid_y']
-mask_90 = results['acceptance_90']  # Boolean array where True = inside 90% CL limit
+X = results['grid_p1']
+Y = results['grid_p2']
+
+# Ensure correct meshgrid orientation for 2D plotting
+X_mesh, Y_mesh = np.meshgrid(X, Y, indexing='ij')
+
+# True indicates the parameter coordinate is inside the 90% CL limit
+mask_90 = results['2d_accepted_p1p2_0.9'] 
 
 # 2. Load the metadata
 with open('fc_output/fc_results.json', 'r') as f:
@@ -401,32 +406,36 @@ best_fit = meta['best_fit']
 # 3. Plot the allowed region
 plt.figure(figsize=(8, 6))
 # contourf uses the boolean mask to shade the allowed parameter space
-plt.contourf(X, Y, mask_90, levels=[0.5, 1.5], colors=['#1f77b4'], alpha=0.3)
+plt.contourf(X_mesh, Y_mesh, mask_90, levels=[0.5, 1.5], colors=['#1f77b4'], alpha=0.3)
 
 # Plot the global best fit point
 plt.plot(best_fit[0], best_fit[1], 'r*', markersize=12, label='Global Best Fit')
 
-plt.xlabel(meta['param_names'][0])
-plt.ylabel(meta['param_names'][1])
+plt.xlabel("Parameter 1")
+plt.ylabel("Parameter 2")
 plt.title('Custom 90% CL Feldman-Cousins Region')
 plt.legend()
 plt.show()
 ```
+*(Warning: The framework natively plots all dimensional combinations. Requesting a grid space with $N > 4$ parameters causes combinatorial explosions in both processing time and the size of the final plotted matrix axes).*
 
 ---
 
 ## Common Recipes and Questions
 
+### Reproducibility and Random Seeds
+Monte Carlo pseudo-experiment generation relies heavily on random number generators. To ensure exact reproducibility across multiple runs—especially when utilizing multi-processing via `ProcessPoolExecutor`—you must initialize the random seed in your main execution script before calling the orchestrator (e.g., `np.random.seed(42)`).
+
 ### Troubleshooting
-*   **ValueError: operands could not be broadcast together**: This almost always means the output NumPy array shape of your model functions does not exactly match the shape of the `observed_counts` data array you passed to the orchestrator.
+*   **ValueError: operands could not be broadcast together**: This almost always means the output NumPy array shape generated by your `compute_rates_func` does not exactly match the shape of the `observed_counts` data array you passed to the orchestrator.
 *   **UltraNest Convergence Warnings**: If you receive warnings that the nested sampler is struggling to converge, consider increasing your target parameter bounds (by expanding the ranges in your `grids`) or verifying that your likelihood surface does not contain unhandled `NaN` or `inf` values.
 
 ### Frequently Asked Questions
 **Q: How many toys should I use?**
-A: For a 68% CL interval (1-sigma), 500-1000 toys are often sufficient. For a 90% or 95% limit, 2000-5000 toys are required to smoothly resolve the tail of the test statistic distribution. Ensure `n_toys` is large enough that $N_{\text{toys}} \times (1 - \alpha) \gg 1$.
+A: For a 68% CL interval (1-sigma), 200-1000 toys are often sufficient. For a 90% or 95% limit, 2000-5000 toys are required to smoothly resolve the tail of the test statistic distribution. Ensure `n_toys` is large enough that $N_{\text{toys}} \times (1 - \alpha) \gg 1$.
 
 **Q: I have a parameter that represents a systematic uncertainty. How do I profile it?**
-A: Simply pass a `np.linspace()` grid for that parameter into the `grids` list, and ensure its index is not included in the `poi_indices` when calling `compute_fc_intervals`. PyFC automatically profiles (maximizes) all parameters in the `grids` list that are not explicitly flagged as the parameters of interest.
+A: Simply pass a `np.linspace()` grid for that parameter into the `grids` list. The framework automatically profiles (maximizes) any parameter in the `grids` list that is not the direct target of the current 1D or 2D interval scan.
 
 ---
 
