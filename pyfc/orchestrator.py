@@ -183,16 +183,31 @@ def _save_fc_json(results, output_path, cl, compute_1D_intervals, compute_2D_int
         json_dict["1d_intervals"] = {}
         for p_idx in range(n_params):
             p_key = f"param{p_idx+1}"
+            test_points = results.get(f"1d_test_p{p_idx+1}")
+            
             json_dict["1d_intervals"][p_key] = {
-                "test_points": results.get(f"1d_test_p{p_idx+1}"),
+                "test_points": test_points,
                 "t_data": results.get(f"1d_t_data_p{p_idx+1}"),
                 "prof_params": results.get(f"1d_prof_params_p{p_idx+1}"),
                 "thresholds": {}
             }
+            
             for c in cl:
+                accepted = results[f"1d_accepted_p{p_idx+1}"][c]
+                interval_bounds = []
+                
+                # Extract min and max bounds for the accepted points
+                if test_points is not None and accepted is not None:
+                    accepted_points = [
+                        val for val, is_acc in zip(test_points, accepted) if is_acc
+                    ]
+                    if accepted_points:
+                        interval_bounds = [min(accepted_points), max(accepted_points)]
+                
                 json_dict["1d_intervals"][p_key]["thresholds"][str(c)] = {
                     "t_critical": results[f"1d_t_critical_p{p_idx+1}"][c],
-                    "accepted": results[f"1d_accepted_p{p_idx+1}"][c]
+                    "accepted": accepted,
+                    "interval_bounds": interval_bounds
                 }
 
     if compute_2D_intervals and n_params > 1:
@@ -649,9 +664,9 @@ if __name__ == "__main__":
     config = parse_arguments()
     
     grids = [
-        np.linspace(0.5, 2.0, 15), # param1
-        np.linspace(0.5, 2.0, 15), # param2
-        np.linspace(0.5, 1.5, 15)  # param3
+        np.linspace(0.5, 2.0, 50), # param1
+        np.linspace(0.5, 2.0, 50), # param2
+        np.linspace(0.5, 1.5, 50)  # param3
     ]
     
     if config["likelihood_type"] == "binned":
