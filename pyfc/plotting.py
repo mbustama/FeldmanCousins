@@ -210,4 +210,5 @@ def generate_corner_plot(results, config):
 
     plot_path = os.path.join(config.get("save_directory", "."), "fc_corner_plot.pdf")
     plt.savefig(plot_path, bbox_inches='tight')
-    plt.close()
+    return fig
+    # plt.close()
