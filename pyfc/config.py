@@ -1,10 +1,50 @@
+"""
+Configuration and Argument Parsing Module
+
+This file defines the configuration management system for the PyFC framework. 
+It establishes a hierarchical parameter loading mechanism (Hardcoded Defaults -> 
+JSON Configuration File -> Command Line Arguments) to control the execution 
+of the Feldman-Cousins confidence interval construction.
+
+While this file does not execute the mathematical routines, it defines the 
+statistical, algorithmic, and computational parameters that govern the 
+underlying profile likelihood ratio tests and Monte Carlo toy generation.
+
+Date: July 24, 2026
+Author: Mauricio Bustamante (mbustamante@gmail.com)
+
+This file was released as part of the PyFC code, stored at 
+https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 License.
+"""
+
 import json
 import argparse
 import sys
 import os
 
 def generate_sample_config(filename="../config/example_fc_config.json"):
-    """Generates a sample JSON configuration file."""
+    """
+    Generates a sample JSON configuration file containing default execution parameters.
+    
+    Statistical & Algorithmic Context:
+    The default configuration initializes a standard binned likelihood analysis 
+    calculating confidence intervals at 68% and 90% Confidence Levels (CL). 
+    It enables the finite Monte Carlo correction (assuming template statistical 
+    uncertainties require a Poisson-Gamma mixture likelihood) and utilizes an 
+    adaptive Monte Carlo toy generation strategy to optimize computational 
+    resources when empirical p-values are far from the critical threshold alpha.
+
+    Parameters:
+    -----------
+    filename : str, optional
+        The destination file path where the JSON configuration will be written. 
+        Defaults to "../config/example_fc_config.json".
+
+    Returns:
+    --------
+    None
+        The function writes a file to disk and prints a confirmation message.
+    """
     default_config = {
         "likelihood_type": "binned",
         "cl": [0.68, 0.90],
@@ -31,7 +71,34 @@ def generate_sample_config(filename="../config/example_fc_config.json"):
     print(f"Sample configuration written to {filename}")
 
 def parse_arguments():
-    """Parses hierarchy: Defaults -> JSON Config File -> CLI Arguments"""
+    """
+    Parses execution parameters using a strict hierarchy: 
+    Defaults -> JSON Config File -> CLI Arguments.
+    
+    Statistical Theory & Configuration Parameters:
+    - likelihood_type: Defines the probability density function (PDF) form. 
+      'binned' uses Poisson/Negative Binomial counting statistics; 'unbinned' 
+      uses continuous event likelihoods.
+    - cl: The target Confidence Level(s) (1 - alpha), defining the required 
+      frequentist coverage probability (e.g., 0.90 for 90% coverage).
+    - n_toys: The baseline number of parametric bootstrap pseudo-experiments 
+      used to build the empirical Profile Likelihood Ratio (PLR) distribution.
+    - use_finite_mc_correction_binned: If True, convolves the standard Poisson 
+      likelihood with a Gamma prior to account for limited statistics in MC templates.
+    - strategy: The optimization algorithm used to minimize the Negative 
+      Log-Likelihood (NLL). Options include exhaustive 'grid', gradient-based 
+      'scipy', or nested sampling 'ultranest'.
+
+    Parameters:
+    -----------
+    None (Reads directly from command line via sys.argv)
+
+    Returns:
+    --------
+    config : dict
+        A dictionary containing the fully resolved configuration parameters 
+        necessary to execute the Feldman-Cousins orchestrator.
+    """
     parser = argparse.ArgumentParser(description="Feldman-Cousins Confidence Intervals (N Parameter Model)")
     
     parser.add_argument('--config_file', type=str, help="Path to JSON config file", default=argparse.SUPPRESS)

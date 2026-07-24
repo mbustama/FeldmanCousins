@@ -1,3 +1,34 @@
+"""
+Feldman-Cousins Orchestrator Module
+
+This file acts as the central hub and main driver for the PyFC package. 
+It coordinates the execution of the Feldman-Cousins confidence interval construction, 
+managing the interplay between the data, physical models, likelihood optimizers, 
+and Monte Carlo toy generators. It handles checkpointing, parameter space scanning 
+(including an optimized 2D grid sparsification algorithm), and data archiving.
+
+Usage (Command Line Interface):
+-------------------------------
+This script can be executed directly from the terminal to run a demonstration 
+of the PyFC pipeline using automatically generated mock data (binned or unbinned).
+
+To run the demonstration using the current configuration (or `fc_config.json`):
+    $ python orchestrator.py
+    
+Alternatively, if the PyFC package is installed in your Python environment:
+    $ python -m pyfc.orchestrator
+    
+You can override configuration parameters directly via command-line arguments. 
+For example, to run an unbinned analysis with 500 toys using the SciPy optimizer:
+    $ python orchestrator.py --likelihood_type unbinned --n_toys 500 --strategy scipy
+
+Date: July 24, 2026
+Author: Mauricio Bustamante (mbustamante@gmail.com)
+
+This file was released as part of the PyFC code, stored at 
+https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 License.
+"""
+
 import numpy as np
 import itertools
 import logging
@@ -41,7 +72,13 @@ except ImportError:
 
 
 class NumpyEncoder(json.JSONEncoder):
-    """Custom encoder to serialize NumPy arrays, floats, ints, and booleans to JSON."""
+    """
+    Custom JSON encoder to safely serialize NumPy data types.
+    
+    Standard `json` libraries cannot handle `np.ndarray` or specific NumPy 
+    numerical types (like `np.float64`). This intercepts those objects during 
+    the `json.dump` process and converts them to standard Python equivalents.
+    """
     def default(self, obj):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
@@ -55,7 +92,32 @@ class NumpyEncoder(json.JSONEncoder):
 
 
 def _save_fc_archive(results, grids, output_path, cl, compute_1D_intervals, compute_2D_intervals, n_params):
-    """Unified function to serialize the FC environment state."""
+    """
+    Serializes the computational state of the Feldman-Cousins environment to a binary `.npz` archive.
+    
+    This function is critical for the "warm start" (checkpointing) feature. It saves 
+    all currently evaluated test statistics, parameter grids, and boolean acceptance maps 
+    so that execution can be halted and resumed without losing expensive MC toy computations.
+
+    Parameters:
+    -----------
+    results : dict
+        The central dictionary holding all computed arrays and limits.
+    grids : list of np.ndarray
+        The parameter scan grids used for the evaluation.
+    output_path : str
+        The file path for the `.npz` archive.
+    cl : list of float
+        Confidence levels being evaluated.
+    compute_1D_intervals, compute_2D_intervals : bool
+        Flags indicating which dimensional modes are active.
+    n_params : int
+        Total number of parameters in the model.
+        
+    Returns:
+    --------
+    None (Writes file to disk)
+    """
     save_dict = {
         "best_fit": results["best_fit"],
         "data_uncond_nll": results.get("data_uncond_nll", np.nan)
@@ -89,7 +151,29 @@ def _save_fc_archive(results, grids, output_path, cl, compute_1D_intervals, comp
 
 
 def _save_fc_json(results, output_path, cl, compute_1D_intervals, compute_2D_intervals, n_params):
-    """Exports computed 1D and 2D intervals to an external JSON file conditionally."""
+    """
+    Exports computed 1D and 2D intervals to an external, human-readable JSON format.
+    
+    This provides an alternative to the binary `.npz` archive, facilitating 
+    interoperability with web frameworks, external plotting tools, or other languages.
+
+    Parameters:
+    -----------
+    results : dict
+        The populated results dictionary.
+    output_path : str
+        The destination JSON file path.
+    cl : list of float
+        The confidence levels evaluated.
+    compute_1D_intervals, compute_2D_intervals : bool
+        Flags indicating which intervals were processed.
+    n_params : int
+        Number of parameters in the model.
+        
+    Returns:
+    --------
+    None (Writes file to disk)
+    """
     json_dict = {
         "best_fit": results["best_fit"],
         "data_uncond_nll": results.get("data_uncond_nll", None)
@@ -141,6 +225,72 @@ def compute_fc_intervals(data, S_model, B_model, grids,
                          use_finite_mc_correction_binned=True, S_sigma2=None, B_sigma2=None,
                          compute_1D_intervals=True, compute_2D_intervals=True, param_names=None,
                          smooth_1d=False, smooth_2d=False):
+    """
+    Main execution pipeline for the Feldman-Cousins unified approach.
+    
+    Statistical Theory:
+    The Feldman-Cousins method constructs confidence intervals (or regions) that transition 
+    smoothly between upper limits and two-sided bounds. It relies on the Profile Likelihood 
+    Ratio as the test statistic to determine ordering.
+    
+    For a given parameter point $\theta_{\text{test}}$, the data test statistic is:
+    $$ t_{\text{data}} = -2 \ln \frac{\mathcal{L}(\theta_{\text{test}}, \hat{\hat{\boldsymbol{\nu}}} | \text{data})}{\mathcal{L}(\hat{\boldsymbol{\theta}} | \text{data})} $$
+    where $\hat{\boldsymbol{\theta}}$ are the unconditional Maximum Likelihood Estimate (MLE) 
+    parameters, and $\hat{\hat{\boldsymbol{\nu}}}$ are the nuisance parameters profiled (maximized) 
+    while fixing $\theta = \theta_{\text{test}}$. (Note: Since `calc_nll` returns $-2\ln\mathcal{L}$, 
+    this simplifies in code to `cond_nll - data_uncond_nll`).
+    
+    Because the asymptotic distribution of $t$ (Wilks' theorem) may fail near physical boundaries, 
+    we evaluate the exact critical threshold $t_{\text{critical}}$ at a required confidence level $\alpha$ 
+    by generating and fitting Monte Carlo pseudo-experiments (toys) generated under the null 
+    hypothesis $(\theta_{\text{test}}, \hat{\hat{\boldsymbol{\nu}}})$.
+    
+    The point $\theta_{\text{test}}$ is included in the final confidence set if:
+    $$ t_{\text{data}} \leq t_{\text{critical}}(\alpha) $$
+
+    Parameters:
+    -----------
+    data : array_like
+        The observed data (binned counts or unbinned events).
+    S_model, B_model : callable or array_like
+        Signal and background structural models/templates.
+    grids : list of np.ndarray
+        A list of arrays, each defining the evaluation points for a parameter.
+    cl : list of float, optional
+        Confidence levels to compute (e.g., [0.68, 0.90]).
+    n_toys : int, optional
+        Number of pseudo-experiments to generate per point.
+    strategy : str, optional
+        Optimizer strategy: "grid", "scipy", "ultranest", or "hybrid".
+    num_cores : int, optional
+        Number of parallel threads for toy generation.
+    verbose : int, optional
+        0 = Silent, 1 = Normal, 2 = Debug.
+    adaptive_toys, toy_batch_size, sparsify_grid, warm_start : bool/int
+        Algorithmic enhancements to reduce execution time.
+    likelihood_type : str
+        "binned" or "unbinned".
+    S_mc_pool, B_mc_pool : array_like, optional
+        Pool of events to bootstrap for unbinned toy generation.
+    output_file, save_log, save_directory : str/bool
+        I/O file structures.
+    use_finite_mc_correction_binned : bool, optional
+        Toggle for Poisson-Gamma mixture likelihood.
+    S_sigma2, B_sigma2 : array_like, optional
+        Template variances for the finite MC correction.
+    compute_1D_intervals, compute_2D_intervals : bool
+        Switches for calculating 1D profiles or 2D joint contours.
+    param_names : list of str, optional
+        Names used for plot labels.
+    smooth_1d, smooth_2d : bool, optional
+        Toggles interpolation smoothing for final plot outputs.
+
+    Returns:
+    --------
+    results : dict
+        A massive dictionary containing all $t_{\text{data}}$, thresholds, accepted masks, 
+        and best-fit geometries evaluated across the parameter space.
+    """
     
     os.makedirs(save_directory, exist_ok=True)
     n_params = len(grids)
@@ -158,6 +308,7 @@ def compute_fc_intervals(data, S_model, B_model, grids,
         if verbose > 0: print(msg)
         if save_log: run_logger.info(msg)
 
+    # Coerce input configurations
     if isinstance(cl, (float, int)): 
         cl = [float(cl)]
     if ULTRANEST_AVAILABLE and verbose < 2: 
@@ -165,6 +316,7 @@ def compute_fc_intervals(data, S_model, B_model, grids,
     if NUMBA_AVAILABLE and num_cores is not None: 
         set_num_threads(num_cores)
         
+    # Setup likelihood variances for Finite MC
     if likelihood_type == "binned":
         if S_sigma2 is None: S_sigma2 = np.zeros_like(S_model)
         if B_sigma2 is None: B_sigma2 = np.zeros_like(B_model)
@@ -179,6 +331,8 @@ def compute_fc_intervals(data, S_model, B_model, grids,
     disable_tqdm = (verbose == 0) or not TQDM_AVAILABLE
     
     # --- Pre-allocate Architecture with NaNs ---
+    # We use np.nan to explicitly identify points in the grid that have not 
+    # yet been evaluated (vital for the checkpointing and sparsification logic).
     results = {
         "best_fit": np.full(n_params, np.nan),
         "data_uncond_nll": np.nan
@@ -205,6 +359,8 @@ def compute_fc_intervals(data, S_model, B_model, grids,
             results[f"2d_accepted_{pair_name}"] = {c: np.full((len(gridA), len(gridB)), False) for c in cl}
 
     # --- Resume Protocol Validation ---
+    # Attempts to ingest an existing state dictionary from a previous incomplete run.
+    # Checks strictly if the requested bounds/grids map precisely to the saved geometries.
     if warm_start and os.path.exists(ckpt_path):
         try:
             ckpt = np.load(ckpt_path, allow_pickle=True)
@@ -219,6 +375,7 @@ def compute_fc_intervals(data, S_model, B_model, grids,
                 if "best_fit" in ckpt: results["best_fit"] = ckpt["best_fit"]
                 if "data_uncond_nll" in ckpt: results["data_uncond_nll"] = float(ckpt["data_uncond_nll"])
                 
+                # Restore 1D tracking arrays
                 if compute_1D_intervals:
                     for p_idx in range(n_params):
                         if f"1d_t_data_p{p_idx+1}" in ckpt: results[f"1d_t_data_p{p_idx+1}"] = ckpt[f"1d_t_data_p{p_idx+1}"]
@@ -227,6 +384,7 @@ def compute_fc_intervals(data, S_model, B_model, grids,
                             if f"1d_t_critical_p{p_idx+1}_{c}" in ckpt: results[f"1d_t_critical_p{p_idx+1}"][c] = ckpt[f"1d_t_critical_p{p_idx+1}_{c}"]
                             if f"1d_accepted_p{p_idx+1}_{c}" in ckpt: results[f"1d_accepted_p{p_idx+1}"][c] = ckpt[f"1d_accepted_p{p_idx+1}_{c}"]
                             
+                # Restore 2D tracking arrays
                 if compute_2D_intervals and n_params > 1:
                     pairs = list(itertools.combinations(range(n_params), 2))
                     for fix_A, fix_B in pairs:
@@ -241,6 +399,8 @@ def compute_fc_intervals(data, S_model, B_model, grids,
             log_print(f"Failed to process checkpoint geometry: {e}. Initiating fresh start.")
 
     # --- PHASE 0: Fit global unconditional data ONCE ---
+    # Finds the absolute minimum NLL over the full parameter space. 
+    # This forms the denominator of the PLR test statistic for all points.
     full_grid_points = np.array(list(itertools.product(*grids)), dtype=np.float64)
     
     if np.isnan(results["data_uncond_nll"]):
@@ -268,6 +428,7 @@ def compute_fc_intervals(data, S_model, B_model, grids,
             grid_test = grids[p_idx]
             free_grids = [grids[i] for i in range(n_params) if i != p_idx]
             
+            # Sub-grid for profiling nuisance parameters exhaustively
             if not free_grids:
                 cond_grid_points = np.zeros((1, 0), dtype=np.float64)
             else:
@@ -277,6 +438,7 @@ def compute_fc_intervals(data, S_model, B_model, grids,
             prof_params_arr = results[f"1d_prof_params_p{p_idx+1}"]
             t_crit_dict = results[f"1d_t_critical_p{p_idx+1}"]
             
+            # Sub-phase 1a: Calculate t_data across the 1D grid
             for i, pt in enumerate(tqdm(grid_test, desc=f"1D Data (p{p_idx+1})", disable=disable_tqdm)):
                 if not np.isnan(t_data_arr[i]): 
                     continue
@@ -292,8 +454,10 @@ def compute_fc_intervals(data, S_model, B_model, grids,
                     cond_nll, prof_p = conditional_fit_1d_scipy(pt, p_idx, n_params, data, S_model, B_model, bounds_list, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
                 
                 prof_params_arr[i] = prof_p
+                # Evaluate the actual PLR data statistic (bounded at 0 to fix numerical floating point noise)
                 t_data_arr[i] = max(0.0, cond_nll - data_uncond_nll)
 
+            # Sub-phase 1b: Calculate t_critical via Toy Generation
             for i, pt in enumerate(tqdm(grid_test, desc=f"1D Toys (p{p_idx+1})", disable=disable_tqdm)):
                 if not np.isnan(t_crit_dict[cl[0]][i]): 
                     continue
@@ -332,14 +496,14 @@ def compute_fc_intervals(data, S_model, B_model, grids,
             else:
                 cond_grid_points = np.array(list(itertools.product(*free_grids)), dtype=np.float64)
             
-            # Evaluate toys for a specific 2D coordinate structure
+            # Helper function to evaluate toys for a specific (i, j) 2D coordinate 
             def eval_2d_point(i, j):
                 if not np.isnan(results[f"2d_t_critical_{pair_name}"][cl[0]][i, j]):
                     return
                     
                 p_A, p_B = gridA[i], gridB[j]
                 
-                # 1. Exact Data NLL Calculation
+                # Step 1. Exact Data NLL Calculation (Profiling out remaining nuisance pars)
                 if np.isnan(results[f"2d_t_data_{pair_name}"][i, j]):
                     if strategy == "grid":
                         if likelihood_type == "binned": 
@@ -360,7 +524,7 @@ def compute_fc_intervals(data, S_model, B_model, grids,
                     else:
                         _, true_params = conditional_fit_grid_1d(p_A, fix_A, n_params, data, S_model, B_model, cond_grid_points, S_sigma2, B_sigma2, use_finite_mc_correction_binned)
                 
-                # 2. Sequential Toy Assessment
+                # Step 2. Sequential Toy Assessment to get critical threshold for coverage
                 if strategy == "grid":
                     if likelihood_type == "binned": 
                         t_stats = generate_and_fit_toys_grid_2d(p_A, p_B, fix_A, fix_B, true_params, n_params, S_model, B_model, full_grid_points, cond_grid_points, n_toys, S_sigma2, B_sigma2, use_finite_mc_correction_binned)
@@ -373,7 +537,12 @@ def compute_fc_intervals(data, S_model, B_model, grids,
                 for c in cl: 
                     results[f"2d_t_critical_{pair_name}"][c][i, j] = t_stats[min(int(c * n_toys), n_toys - 1)]
 
-            # Sparsification Array Tracing
+            # --- Sparsification Array Tracing ---
+            # To dramatically reduce computation time in 2D grids, this algorithm:
+            # 1. Evaluates a coarse subset of grid nodes.
+            # 2. Uses Bivariate Spline interpolation to estimate the t_critical surface.
+            # 3. Dynamically traces and evaluates only the specific high-resolution nodes 
+            #    where the condition (t_data <= t_critical) transitions state (the contour boundary).
             if sparsify_grid:
                 step_A = max(1, len(gridA) // 5)
                 step_B = max(1, len(gridB) // 5)
@@ -385,7 +554,7 @@ def compute_fc_intervals(data, S_model, B_model, grids,
                 for pt in tqdm(coarse_pts, desc=f"2D Coarse {pair_name}", disable=disable_tqdm): 
                     eval_2d_point(*pt)
                     
-                # Interpolate coarse framework
+                # Interpolate the coarse critical surface framework
                 if SCIPY_AVAILABLE:
                     from scipy.interpolate import RectBivariateSpline
                     for c in cl:
@@ -401,6 +570,7 @@ def compute_fc_intervals(data, S_model, B_model, grids,
                                 results[f"2d_t_critical_{pair_name}"][c][i, j] = results[f"2d_t_critical_{pair_name}"][c][ni, nj]
                 
                 # Dynamic Perimeter Edge Tracing
+                # Scans the interpolated map and flags cells that lie on the inclusion/exclusion border.
                 refine_pts = set()
                 for c in cl:
                     approx_acc = results[f"2d_t_data_{pair_name}"] <= results[f"2d_t_critical_{pair_name}"][c]
@@ -432,6 +602,7 @@ def compute_fc_intervals(data, S_model, B_model, grids,
             for pt in tqdm(pts_to_eval, desc=f"2D Edge {pair_name}", disable=disable_tqdm): 
                 eval_2d_point(*pt)
             
+            # Formally calculate final boolean acceptance mask
             for c in cl: 
                 results[f"2d_accepted_{pair_name}"][c] = results[f"2d_t_data_{pair_name}"] <= results[f"2d_t_critical_{pair_name}"][c]
                 
@@ -447,7 +618,7 @@ def compute_fc_intervals(data, S_model, B_model, grids,
         _save_fc_json(results, final_path_json, cl, compute_1D_intervals, compute_2D_intervals, n_params)
         log_print(f"Results archived completely to storage matrix {final_path} and JSON {final_path_json}")
         
-        # Eliminate interim files
+        # Eliminate interim tracking files now that final save is secure
         if os.path.exists(ckpt_path):
             os.remove(ckpt_path)
 

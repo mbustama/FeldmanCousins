@@ -1,8 +1,70 @@
+"""
+Configuration Generator Module (Interactive CLI)
+
+This file contains a standalone interactive command-line interface (CLI) 
+designed to generate a properly formatted JSON configuration file (`fc_config.json`) 
+for the PyFC (Feldman-Cousins) orchestrator. It handles user input collection, 
+type casting, rule validation, and default parameter fallback.
+
+While this script does not perform mathematical calculations directly, it defines 
+the statistical hyper-parameters (such as Confidence Levels, likelihood formulations, 
+and Monte Carlo toy counts) that dictate the rigorousness and underlying assumptions 
+of the frequentist confidence interval construction.
+
+Usage (Command Line Interface):
+-------------------------------
+To launch the interactive configuration generator, run the script directly from 
+your terminal:
+    $ python generate_config.py
+    
+Alternatively, if the PyFC package is installed in your Python environment:
+    $ python -m pyfc.generate_config
+    
+Interactive Instructions:
+- You will be prompted sequentially for various configuration values.
+- Type your desired value and press [Enter].
+- To accept the default value displayed in brackets (e.g., [Default: binned]), 
+  simply press [Enter] without typing anything.
+- For boolean (yes/no) questions, accepted inputs include 'y', 'yes', 't', 'true', '1' 
+  for True, and 'n', 'no', 'f', 'false', '0' for False (case-insensitive).
+- For list inputs (like Confidence Levels), provide values separated by commas 
+  (e.g., 0.68, 0.90, 0.95).
+
+Date: July 24, 2026
+Author: Mauricio Bustamante (mbustamante@gmail.com)
+
+This file was released as part of the PyFC code, stored at 
+https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 License.
+"""
+
 import json
 import os
 
 def parse_bool(value):
-    """Safely converts string inputs to boolean."""
+    """
+    Safely converts string inputs to boolean values.
+    
+    Statistical Context:
+    Boolean flags in the configuration control critical methodological choices, 
+    such as whether to apply the finite Monte Carlo correction (which shifts the 
+    likelihood from a standard Poisson distribution to a Negative Binomial 
+    Poisson-Gamma mixture) or whether to use adaptive sampling for the toys.
+
+    Parameters:
+    -----------
+    value : str or bool
+        The raw input provided by the user (e.g., 'y', 'n', 'true', '1').
+
+    Returns:
+    --------
+    bool
+        The parsed boolean True or False.
+        
+    Raises:
+    -------
+    ValueError:
+        If the input string cannot be mapped to a valid boolean state.
+    """
     if isinstance(value, bool):
         return value
     val_lower = str(value).strip().lower()
@@ -14,21 +76,77 @@ def parse_bool(value):
         raise ValueError("Please enter 'y' for True or 'n' for False.")
 
 def parse_float_list(value):
-    """Converts a comma-separated string to a list of floats."""
+    """
+    Converts a comma-separated string to a list of floats.
+    
+    Statistical Context:
+    This is primarily used to parse the Confidence Levels (CL). In the 
+    Feldman-Cousins approach, the confidence level (1 - alpha) determines the 
+    critical value of the Profile Likelihood Ratio test statistic. The framework 
+    will compute intervals ensuring exact frequentist coverage at these specified 
+    probabilities (e.g., 0.68 for 1-sigma, 0.90 for 90% CL).
+
+    Parameters:
+    -----------
+    value : str or list
+        The raw input string containing comma-separated numbers (e.g., "0.68, 0.90").
+
+    Returns:
+    --------
+    list of float
+        A list of floating-point numbers parsed from the input.
+    """
     if isinstance(value, list):
         return value
     return [float(x.strip()) for x in str(value).split(',')]
 
 def parse_str_list(value):
-    """Converts a comma-separated string to a list of strings."""
+    """
+    Converts a comma-separated string to a list of strings.
+    
+    Parameters:
+    -----------
+    value : str or list
+        The raw input string containing comma-separated names.
+
+    Returns:
+    --------
+    list of str
+        A list of stripped string values (typically representing physical parameter names).
+    """
     if isinstance(value, list):
         return value
     return [str(x.strip()) for x in str(value).split(',')]
 
 def get_input(prompt_text, default_val, cast_func, choices=None, validator=None, error_msg="Invalid input."):
     """
-    Core interactive prompt loop.
-    Handles rendering the prompt, parsing the input, and executing all validation rules.
+    Core interactive prompt loop for CLI data entry.
+    
+    Handles rendering the prompt, intercepting empty inputs for default fallback, 
+    parsing the input via the provided casting function, and executing all 
+    validation rules (like bounds checking for statistical parameters).
+
+    Parameters:
+    -----------
+    prompt_text : str
+        The question or prompt presented to the user.
+    default_val : any
+        The fallback value used if the user submits an empty response (presses Enter).
+    cast_func : callable
+        A function (like int, str, or parse_bool) used to transform the string input 
+        into the desired target data type.
+    choices : list, optional
+        A specific list of allowed values. If provided, input must exist in this list.
+    validator : callable, optional
+        A function that takes the parsed value and returns True if valid, False otherwise.
+        Used for mathematical bounds (e.g., ensuring n_toys > 0).
+    error_msg : str, optional
+        The message displayed if the validator function fails.
+
+    Returns:
+    --------
+    parsed_val : any
+        The fully validated, type-casted user input (or the default value).
     """
     # Format the prompt text to include defaults and allowed choices
     formatted_prompt = f"{prompt_text}"
@@ -70,6 +188,31 @@ def get_input(prompt_text, default_val, cast_func, choices=None, validator=None,
             print(f"  -> Error: Invalid input format.\n")
 
 def main():
+    """
+    Main entry point for the configuration generator.
+    
+    Statistical Theory & Configuration Impact:
+    This sequence builds the `fc_config.json` matrix. It defines:
+    - PDF formulation (Binned vs Unbinned) which changes the NLL definition.
+    - Confidence Levels (CL) which sets the coverage integration targets.
+    - Monte Carlo sampling size (n_toys), controlling the resolution of the empirical 
+      test statistic PDF. Higher toys reduce statistical noise in the p-value calculation 
+      at the expense of computation time.
+    - Likelihood optimization strategies (SciPy, UltraNest, etc.) used to find the global 
+      and conditional minima of the parameter space during profiling.
+    - Advanced topological settings (adaptive toys, grid sparsification) which employ 
+      heuristics to skip unnecessary toy generations in regions definitively outside 
+      the targeted confidence bounds.
+
+    Parameters:
+    -----------
+    None
+
+    Returns:
+    --------
+    None
+        Outputs a serialized JSON file containing the validated configuration.
+    """
     print("="*60)
     print(" Feldman-Cousins Configuration Generator")
     print(" Press [Enter] on any question to accept the default value.")
