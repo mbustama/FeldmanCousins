@@ -54,7 +54,7 @@ html_static_path = ['_static']
 # --- HTML Theme Options (Sidebar and GitHub Links) ---
 
 # Uncomment and point to your logo file if you have one in docs/source/_static/
-# html_logo = "_static/pyfc_logo.png"
+html_logo = "_static/pyfc_logo.png"
 
 html_theme_options = {
     'logo_only': False,
