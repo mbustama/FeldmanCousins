@@ -56,7 +56,7 @@ PyFC requires **Python 3.8+**. Core dependencies include:
 
 ### Installation
 
-**Option 1: Direct PyPI Installation (Recommended)**
+#### Option 1: Direct PyPI Installation (Recommended)
 To install the latest stable release directly from the Python Package Index (PyPI), run:
 
 ```bash
@@ -65,7 +65,7 @@ pip install PyFeldmanCousins
 
 `pip` is not case-sensitive, so using `pip install pyfeldmancousins` will have the same result.
 
-**Option 2: Local Installation from Source**
+#### Option 2: Local Installation from Source
 If you want to run the latest development version or modify the codebase, clone the repository and install via `pip` to automatically resolve and install all dependencies:
 
 ```bash
