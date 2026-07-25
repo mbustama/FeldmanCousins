@@ -25,7 +25,7 @@ To install the latest stable release directly from the Python Package Index (PyP
 
    pip install PyFeldmanCousins
 
-`pip` is not case-sensitive, so using `pip install pyfeldmancousins` will have the same result.
+``pip`` is not case-sensitive, so using ``pip install pyfeldmancousins`` will have the same result.
 
 **Option 2: Local Installation from Source**
 
