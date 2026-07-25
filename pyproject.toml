@@ -6,6 +6,20 @@ build-backend = "setuptools.build_meta"
 name = "PyFC"
 version = "0.1.0"
 description = "A modular framework for Feldman-Cousins confidence interval calculations."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "GPL-3.0-or-later"}
+authors = [
+    {name = "Mauricio Bustamante", email = "mbustamante@gmail.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Mathematics"
+]
 dependencies = [
     "numpy>=1.20",
     "scipy",
@@ -16,6 +30,16 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest"]
 dev = ["pytest", "twine", "build"]
+docs = ["sphinx", "sphinx-theme-name", "sphinxcontrib-bibtex"] 
+optimizers = ["ultranest", "tqdm"]
+
+[project.urls]
+Homepage = "https://github.com/mbustama/FeldmanCousins"
+Repository = "https://github.com/mbustama/FeldmanCousins.git"
+Issues = "https://github.com/mbustama/FeldmanCousins/issues"
+
+[project.scripts]
+pyfc-config = "pyfc.generate_config:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -1,0 +1,67 @@
+Configuration
+=============
+
+Using generate_config.py
+------------------------
+PyFC provides an interactive command-line tool to help users build their analysis configuration files securely and without typos. To interactively generate a configuration file from anywhere, simply run:
+
+.. code-block:: bash
+
+   python -m pyfc.generate_config
+
+The script will prompt you with questions regarding your likelihood type, number of toys, parallelization preferences, and smoothing options. It validates your inputs and writes a file (by default, ``fc_config.json``) to your current working directory.
+
+Configuration Parameters
+------------------------
+.. list-table:: 
+   :widths: 20 45 20 15
+   :header-rows: 1
+
+   * - Parameter
+     - Description
+     - Allowed Values
+     - Default
+   * - ``likelihood_type``
+     - Evaluates models via Poisson bins or Extended Unbinned Maximum Likelihood.
+     - ``"binned"``, ``"unbinned"``
+     - ``"binned"``
+   * - ``cl``
+     - Confidence Levels determining exact frequentist coverage integration targets.
+     - List of floats ``(0.0, 1.0)``
+     - ``[0.68, 0.90]``
+   * - ``n_toys``
+     - Monte Carlo pseudo-experiments generated per parameter space point.
+     - Integer :math:`> 0`
+     - ``500``
+   * - ``strategy``
+     - Optimizer used for finding global and conditional likelihood minima.
+     - ``"scipy"``, ``"ultranest"``, ``"hybrid"``, ``"grid"``
+     - ``"scipy"``
+   * - ``use_finite_mc_correction_binned``
+     - Shifts Poisson likelihood to a Negative Binomial to account for finite simulation stats.
+     - ``True``, ``False``
+     - ``True``
+   * - ``compute_1D_intervals``
+     - Toggles 1D limits mapping.
+     - ``True``, ``False``
+     - ``True``
+   * - ``compute_2D_intervals``
+     - Toggles joint 2D contour scanning and edge tracing.
+     - ``True``, ``False``
+     - ``True``
+   * - ``num_cores``
+     - Thread/process count for parallel toy generation. ``null`` maps to max hardware threads.
+     - Integer :math:`\geq 0`
+     - ``8``
+   * - ``warm_start``
+     - Checkpoints interim state to ``.npz`` files to recover from preemptions.
+     - ``True``, ``False``
+     - ``True``
+   * - ``adaptive_toys``
+     - Dynamically stops toy generation early if a grid point is definitively excluded.
+     - ``True``, ``False``
+     - ``True``
+   * - ``sparsify_grid``
+     - Traces contour perimeters in 2D space to skip resolving deep interior/exterior nodes.
+     - ``True``, ``False``
+     - ``False``
