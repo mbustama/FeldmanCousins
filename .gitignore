@@ -6,3 +6,4 @@ PyFC.egg-info/
 **/__pycache__
 *.pyc
 *.csv
+docs/build/
