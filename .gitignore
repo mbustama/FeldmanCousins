@@ -7,3 +7,4 @@ PyFC.egg-info/
 *.pyc
 *.csv
 docs/build/
+examples/fc_tutorial_output/
