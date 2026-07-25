@@ -562,10 +562,12 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                     true_params = prof_p
                 else:
                     # Rerun extremely rapid exact data fitting to retrieve the localized profiling if bypassing saved data.
-                    if strategy == "scipy":
-                        _, true_params = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
+                    if strategy == "grid":
+                        cond_nll, true_params = conditional_fit_grid_2d(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, cond_grid_points, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func)
+                    elif strategy in ["ultranest", "hybrid"]:
+                        cond_nll, true_params = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
                     else:
-                        _, true_params = conditional_fit_grid_1d(p_A, fix_A, n_params, data, S_model, B_model, cond_grid_points, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func)
+                        cond_nll, true_params = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
                 
                 # Step 2. Sequential Toy Assessment to get critical threshold for coverage
                 if strategy == "grid":
