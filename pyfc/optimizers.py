@@ -95,11 +95,13 @@ def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compu
             
     # x0 = seed if seed is not None else [(b[0] + b[1]) / 2.0 for b in bounds_list]
     if seed is not None:
-        lb = np.array([b[0] for b in bounds_list])
-        ub = np.array([b[1] for b in bounds_list])
+        eps = 1e-8
+        lb = np.array([b[0] for b in bounds_list]) + eps
+        ub = np.array([b[1] for b in bounds_list]) - eps
         x0 = np.clip(seed, lb, ub)
     else:
         x0 = [(b[0] + b[1]) / 2.0 for b in bounds_list]
+        
     res = optimize.minimize(cost, x0=x0, bounds=bounds_list, method='L-BFGS-B')
     return res.fun, res.x
 
@@ -165,12 +167,13 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model
             
     # x0 = seed if seed is not None else [(b[0] + b[1]) / 2.0 for b in free_bounds]
     if seed is not None:
-        lb = np.array([b[0] for b in free_bounds])
-        ub = np.array([b[1] for b in free_bounds])
+        eps = 1e-8
+        lb = np.array([b[0] for b in free_bounds]) + eps
+        ub = np.array([b[1] for b in free_bounds]) - eps
         x0 = np.clip(seed, lb, ub)
     else:
         x0 = [(b[0] + b[1]) / 2.0 for b in free_bounds]
-    
+        
     if len(free_bounds) == 0:
         p = np.zeros(n_params)
         p[fix_idx] = test_val
@@ -245,12 +248,13 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_m
             
     # x0 = seed if seed is not None else [(b[0] + b[1]) / 2.0 for b in free_bounds]
     if seed is not None:
-        lb = np.array([b[0] for b in free_bounds])
-        ub = np.array([b[1] for b in free_bounds])
+        eps = 1e-8
+        lb = np.array([b[0] for b in free_bounds]) + eps
+        ub = np.array([b[1] for b in free_bounds]) - eps
         x0 = np.clip(seed, lb, ub)
     else:
         x0 = [(b[0] + b[1]) / 2.0 for b in free_bounds]
-    
+        
     if len(free_bounds) == 0:
         p = np.zeros(n_params)
         p[fix_A] = test_vA
