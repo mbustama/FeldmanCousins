@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "PyFC"
-version = "0.1.0"
+name = "PyFeldmanCousins"
+version = "0.9.0"
 description = "A modular framework for Feldman-Cousins confidence interval calculations."
 readme = "README.md"
 requires-python = ">=3.8"
