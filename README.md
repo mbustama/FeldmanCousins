@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/_static/pyfc_logo.png" alt="PyFC Logo" width="180">
+  <img src="https://raw.githubusercontent.com/mbustama/FeldmanCousins/main/docs/_static/pyfc_logo.png" alt="PyFC Logo" width="180">
 </p>
 
 # PyFC: A Python Framework for Feldman-Cousins Confidence Intervals
