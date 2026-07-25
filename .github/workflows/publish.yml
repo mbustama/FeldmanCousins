@@ -31,7 +31,10 @@ jobs:
       - name: Build the package (sdist and wheel)
         run: python -m build
 
-      - name: Publish package to TestPyPI
+      # - name: Publish package to TestPyPI
+      #   uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     repository-url: https://test.pypi.org/legacy/
+
+      - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
