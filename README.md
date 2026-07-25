@@ -69,7 +69,7 @@ pip install PyFeldmanCousins
 If you want to run the latest development version or modify the codebase, clone the repository and install via `pip` to automatically resolve and install all dependencies:
 
 ```bash
-git clone [https://github.com/mbustama/FeldmanCousins.git](https://github.com/mbustama/FeldmanCousins.git)
+git clone https://github.com/mbustama/FeldmanCousins.git
 cd FeldmanCousins
 pip install -e .
 ```
