@@ -23,15 +23,16 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
 2. [File Tree](#file-tree)
 3. [Configuration & generate_config.py](#configuration--generate_configpy)
 4. [Quick Start Guide](#quick-start-guide)
-5. [Configuration Parameters (CLI / JSON)](#configuration-parameters-cli--json)
-6. [Execution Strategies & Algorithmic Optimizations](#execution-strategies--algorithmic-optimizations)
-7. [HPC & Parallelization Guidelines](#hpc--parallelization-guidelines)
-8. [Statistical Methodology & Mathematics](#statistical-methodology--mathematics)
-9. [Outputs, Plots, and Checkpointing](#outputs-plots-and-checkpointing)
-10. [Common Recipes and Questions](#common-recipes-and-questions)
-11. [Contributing](#contributing)
-12. [License](#license)
-13. [How to Cite](#how-to-cite)
+5. [Documentation](#documentation)
+6. [Configuration Parameters (CLI / JSON)](#configuration-parameters-cli--json)
+7. [Execution Strategies & Algorithmic Optimizations](#execution-strategies--algorithmic-optimizations)
+8. [HPC & Parallelization Guidelines](#hpc--parallelization-guidelines)
+9. [Statistical Methodology & Mathematics](#statistical-methodology--mathematics)
+10. [Outputs, Plots, and Checkpointing](#outputs-plots-and-checkpointing)
+11. [Common Recipes and Questions](#common-recipes-and-questions)
+12. [Contributing](#contributing)
+13. [License](#license)
+14. [How to Cite](#how-to-cite)
 
 ---
 
@@ -252,6 +253,14 @@ results = compute_fc_intervals(
     **config 
 )
 ```
+
+---
+
+## Documentation
+
+Comprehensive documentation for PyFC is hosted on GitHub Pages. It includes a quickstart guide, a breakdown of the statistical methodology, and the full API reference.
+
+📚 **[Read the PyFC Documentation & API](https://mbustama.github.io/FeldmanCousins/)**
 
 ---
 
