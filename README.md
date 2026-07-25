@@ -99,27 +99,164 @@ pip install -e ".[test]"
 
 ## File Tree
 
-The project structure is organized modularly to separate analytical likelihood math from plotting and execution loops:
+The project structure is organized modularly to separate analytical likelihood math from plotting, execution loops, and documentation:
 
 ```text
 FeldmanCousins/
 ├── .github/
 │   └── workflows/
-│       └── pytest.yml       # GitHub Actions CI testing pipeline
-├── pyproject.toml           # Build system and dependency specifications
-├── README.md                # Project documentation
-├── examples/                # Full end-to-end scripts for binned/unbinned workflows
-├── tests/                   # Unit and integration test suite
-└── pyfc/
-    ├── __init__.py          # Package initialization and metadata
-    ├── binned.py            # Binned NLL math and Numba-accelerated optimizers
-    ├── config.py            # CLI argument definitions and JSON parsing
-    ├── generate_config.py   # Interactive CLI wizard for creating fc_config.json
-    ├── optimizers.py        # Wrapper functions mapping objective functions to SciPy/UltraNest
-    ├── orchestrator.py      # The main pipeline executing the Feldman-Cousins algorithm
-    ├── plotting.py          # Visualization suite for 1D profiles and 2D contours
-    ├── toys.py              # Multiprocessing engines for MC pseudo-experiment generation
-    └── unbinned.py          # Extended Unbinned Maximum Likelihood (EUML) formulations
+│       ├── lint.yml                 # CI linting and formatting pipeline
+│       ├── pages.yml                # GitHub Pages deployment for documentation
+│       ├── publish.yml              # PyPI (OIDC) automated publishing workflow
+│       └── pytest.yml               # GitHub Actions CI testing pipeline
+├── config/
+│   └── example_fc_config.json       # Template configuration file for CLI usage
+├── docs/                            # Sphinx documentation configuration and source
+│   ├── source/
+│   │   ├── _static/
+│   │   │   └── pyfc_logo.png        # Project branding asset
+│   │   ├── conf.py                  # Sphinx build configuration
+│   │   ├── configuration.rst        # Interactive CLI tool and parameter definitions
+│   │   ├── index.rst                # Master documentation page with high-level overview and table of contents
+│   │   ├── installation.rst         # System requirements, dependencies, and setup instructions
+│   │   ├── methodology.rst          # Statistical math formulations and optimizer execution strategies[## File Tree
+
+The project structure is organized modularly to separate analytical likelihood math from plotting, execution loops, and documentation:
+
+```text
+FeldmanCousins/
+├── .github/
+│   └── workflows/
+│       ├── lint.yml                 # CI linting and formatting pipeline
+│       ├── pages.yml                # GitHub Pages deployment for documentation
+│       ├── publish.yml              # PyPI (OIDC) automated publishing workflow
+│       └── pytest.yml               # GitHub Actions CI testing pipeline
+├── config/
+│   └── example_fc_config.json       # Template configuration file for CLI usage
+├── docs/                            # Sphinx documentation configuration and source
+│   ├── source/
+│   │   ├── _static/
+│   │   │   └── pyfc_logo.png        # Project branding asset
+│   │   ├── conf.py                  # Sphinx build configuration
+│   │   ├── configuration.rst        # Interactive CLI tool and parameter definitions
+│   │   ├── index.rst                # Master documentation page with high-level overview and table of contents
+│   │   ├── installation.rst         # System requirements, dependencies, and setup instructions
+│   │   ├── methodology.rst          # Statistical math formulations and optimizer execution strategies
+│   │   ├── modules.rst              # Autodoc stubs for the PyFC submodules
+│   │   ├── outputs.rst              # Explanation of checkpointing files and returned array structures
+│   │   ├── pyfc.rst                 # Package-level API structure
+│   │   ├── quickstart.rst           # Code tutorials for setting up binned and unbinned models
+│   │   ├── references.rst           # Bibliography page rendering
+│   │   └── refs.bib                 # BibTeX citations for physics and statistics literature
+│   ├── Makefile                     # Build commands for Unix
+│   └── make.bat                     # Build commands for Windows
+├── examples/                        
+│   └── pyfc_tutorial.ipynb          # End-to-end Jupyter notebook tutorial
+├── pyfc/                            # Main Python package
+│   ├── __init__.py                  # Package initialization and metadata
+│   ├── binned.py                    # Binned NLL math and Numba-accelerated optimizers
+│   ├── config.py                    # CLI argument definitions and JSON parsing
+│   ├── generate_config.py           # Interactive CLI wizard for creating configuration files
+│   ├── optimizers.py                # Wrapper functions mapping objective functions to SciPy/UltraNest
+│   ├── orchestrator.py              # The main pipeline executing the Feldman-Cousins algorithm
+│   ├── plotting.py                  # Visualization suite for 1D profiles and 2D contours
+│   ├── toys.py                      # Multiprocessing engines for MC pseudo-experiment generation
+│   └── unbinned.py                  # Extended Unbinned Maximum Likelihood (EUML) formulations
+├── tests/                           # Unit and integration test suite
+│   ├── test_core.py                 # Core installation and import tests, including checks for optional dependencies[cite: 11]
+│   ├── test_io.py                   # Tests for File I/O and intermediate .npz checkpoint recovery mechanisms[cite: 12]
+│   ├── test_multiprocessing.py      # Tests for unbinned execution and multi-processing concurrency using ProcessPoolExecutor[cite: 13]
+│   ├── test_numba_compilation.py    # Tests to ensure Numba JIT compilation executes correctly on the host architecture[cite: 14]
+│   ├── test_optimizers.py           # Tests for continuous optimization routines, including SciPy boundary clamping[cite: 15]
+│   └── test_statistics.py           # Tests for statistical correctness, likelihood behavior, and Asimov treatment convergence[cite: 16]
+├── .gitignore                       # Git untracked files exclusions
+├── LICENSE                          # Open-source license terms
+├── pyproject.toml                   # Build system and dependency specifications
+└── README.md                        # Project documentation## File Tree
+
+The project structure is organized modularly to separate analytical likelihood math from plotting, execution loops, and documentation:
+
+```text
+FeldmanCousins/
+├── .github/
+│   └── workflows/
+│       ├── lint.yml                 # CI linting and formatting pipeline
+│       ├── pages.yml                # GitHub Pages deployment for documentation
+│       ├── publish.yml              # PyPI (OIDC) automated publishing workflow
+│       └── pytest.yml               # GitHub Actions CI testing pipeline
+├── config/
+│   └── example_fc_config.json       # Template configuration file for CLI usage
+├── docs/                            # Sphinx documentation configuration and source
+│   ├── source/
+│   │   ├── _static/
+│   │   │   └── pyfc_logo.png        # Project branding asset
+│   │   ├── conf.py                  # Sphinx build configuration
+│   │   ├── configuration.rst        # Interactive CLI tool and parameter definitions
+│   │   ├── index.rst                # Master documentation page with high-level overview and table of contents
+│   │   ├── installation.rst         # System requirements, dependencies, and setup instructions
+│   │   ├── methodology.rst          # Statistical math formulations and optimizer execution strategies
+│   │   ├── modules.rst              # Autodoc stubs for the PyFC submodules
+│   │   ├── outputs.rst              # Explanation of checkpointing files and returned array structures
+│   │   ├── pyfc.rst                 # Package-level API structure
+│   │   ├── quickstart.rst           # Code tutorials for setting up binned and unbinned models
+│   │   ├── references.rst           # Bibliography page rendering
+│   │   └── refs.bib                 # BibTeX citations for physics and statistics literature
+│   ├── Makefile                     # Build commands for Unix
+│   └── make.bat                     # Build commands for Windows
+├── examples/                        
+│   └── pyfc_tutorial.ipynb          # End-to-end Jupyter notebook tutorial
+├── pyfc/                            # Main Python package
+│   ├── __init__.py                  # Package initialization and metadata
+│   ├── binned.py                    # Binned NLL math and Numba-accelerated optimizers
+│   ├── config.py                    # CLI argument definitions and JSON parsing
+│   ├── generate_config.py           # Interactive CLI wizard for creating configuration files
+│   ├── optimizers.py                # Wrapper functions mapping objective functions to SciPy/UltraNest
+│   ├── orchestrator.py              # The main pipeline executing the Feldman-Cousins algorithm
+│   ├── plotting.py                  # Visualization suite for 1D profiles and 2D contours
+│   ├── toys.py                      # Multiprocessing engines for MC pseudo-experiment generation
+│   └── unbinned.py                  # Extended Unbinned Maximum Likelihood (EUML) formulations
+├── tests/                           # Unit and integration test suite
+│   ├── test_core.py                 # Core installation and import tests, including checks for optional dependencies
+│   ├── test_io.py                   # Tests for File I/O and intermediate .npz checkpoint recovery mechanisms
+│   ├── test_multiprocessing.py      # Tests for unbinned execution and multi-processing concurrency using ProcessPoolExecutor
+│   ├── test_numba_compilation.py    # Tests to ensure Numba JIT compilation executes correctly on the host architecture
+│   ├── test_optimizers.py           # Tests for continuous optimization routines, including SciPy boundary clamping
+│   └── test_statistics.py           # Tests for statistical correctness, likelihood behavior, and Asimov treatment convergence
+├── .gitignore                       # Git untracked files exclusions
+├── LICENSE                          # Open-source license terms
+├── pyproject.toml                   # Build system and dependency specifications
+└── README.md                        # Project documentation
+│   │   ├── modules.rst              # Autodoc stubs for the PyFC submodules
+│   │   ├── outputs.rst              # Explanation of checkpointing files and returned array structures
+│   │   ├── pyfc.rst                 # Package-level API structure
+│   │   ├── quickstart.rst           # Code tutorials for setting up binned and unbinned models
+│   │   ├── references.rst           # Bibliography page rendering
+│   │   └── refs.bib                 # BibTeX citations for physics and statistics literature
+│   ├── Makefile                     # Build commands for Unix
+│   └── make.bat                     # Build commands for Windows
+├── examples/                        
+│   └── pyfc_tutorial.ipynb          # End-to-end Jupyter notebook tutorial
+├── pyfc/                            # Main Python package
+│   ├── __init__.py                  # Package initialization and metadata
+│   ├── binned.py                    # Binned NLL math and Numba-accelerated optimizers
+│   ├── config.py                    # CLI argument definitions and JSON parsing
+│   ├── generate_config.py           # Interactive CLI wizard for creating configuration files
+│   ├── optimizers.py                # Wrapper functions mapping objective functions to SciPy/UltraNest
+│   ├── orchestrator.py              # The main pipeline executing the Feldman-Cousins algorithm
+│   ├── plotting.py                  # Visualization suite for 1D profiles and 2D contours
+│   ├── toys.py                      # Multiprocessing engines for MC pseudo-experiment generation
+│   └── unbinned.py                  # Extended Unbinned Maximum Likelihood (EUML) formulations
+├── tests/                           # Unit and integration test suite
+│   ├── test_core.py                 
+│   ├── test_io.py                   
+│   ├── test_multiprocessing.py      
+│   ├── test_numba_compilation.py    
+│   ├── test_optimizers.py           
+│   └── test_statistics.py           
+├── .gitignore                       # Git untracked files exclusions
+├── LICENSE                          # Open-source license terms
+├── pyproject.toml                   # Build system and dependency specifications
+└── README.md                        # Project documentation
 ```
 
 ---
