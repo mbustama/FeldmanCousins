@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/_static/pyfc_logo.png" alt="PyFC Logo" width="180">
+</p>
+
 # PyFC: A Python Framework for Feldman-Cousins Confidence Intervals
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](#) [![CI Tests](https://github.com/mbustama/FeldmanCousins/actions/workflows/pytest.yml/badge.svg)](https://github.com/mbustama/FeldmanCousins/actions) [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://mbustama.github.io/FeldmanCousins/)
