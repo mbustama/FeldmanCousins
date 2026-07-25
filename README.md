@@ -56,10 +56,20 @@ PyFC requires **Python 3.8+**. Core dependencies include:
 
 ### Installation
 
-Clone the repository and install via `pip` to automatically resolve and install all dependencies:
+**Option 1: Direct PyPI Installation (Recommended)**
+To install the latest stable release directly from the Python Package Index (PyPI), run:
 
 ```bash
-git clone https://github.com/mbustama/FeldmanCousins.git
+pip install PyFeldmanCousins
+```
+
+`pip` is not case-sensitive, so using `pip install pyfeldmancousins` will have the same result.
+
+**Option 2: Local Installation from Source**
+If you want to run the latest development version or modify the codebase, clone the repository and install via `pip` to automatically resolve and install all dependencies:
+
+```bash
+git clone [https://github.com/mbustama/FeldmanCousins.git](https://github.com/mbustama/FeldmanCousins.git)
 cd FeldmanCousins
 pip install -e .
 ```
@@ -75,6 +85,7 @@ pip install pytest
 # Run the test suite from the repository root
 pytest tests/ -v
 ```
+
 ### Continuous Integration (CI)
 
 PyFC is protected by a Continuous Integration (CI) pipeline powered by GitHub Actions. Every time code is pushed or a Pull Request is opened, the CI automatically provisions pristine Ubuntu runners across a matrix of Python versions (e.g., 3.9, 3.10, 3.11). It installs PyFC entirely from scratch and executes the full test suite. This strict isolation eliminates "it works on my machine" biases and guarantees that new code contributions do not introduce regressions.
