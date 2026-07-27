@@ -89,8 +89,7 @@ The project structure is organized modularly to separate analytical likelihood m
    │   │   ├── references.rst           # Bibliography page rendering
    │   │   └── refs.bib                 # BibTeX citations for physics and statistics literature
    │   ├── Makefile                     # Build commands for Unix
-   │   ├── make.bat                     # Build commands for Windows
-   │   └── pyfc.rst                     # Top-level autodoc stub (duplicate of source/pyfc.rst)
+   │   └── make.bat                     # Build commands for Windows
    ├── examples/
    │   ├── pyfc_joint_constraints_tutorial.ipynb  # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
    │   └── pyfc_tutorial.ipynb          # End-to-end Jupyter notebook tutorial
