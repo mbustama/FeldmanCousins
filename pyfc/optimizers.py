@@ -16,6 +16,8 @@ This file was released as part of the PyFC code, stored at
 https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 License.
 """
 
+import warnings
+
 import numpy as np
 
 from .binned import calc_nll
@@ -151,10 +153,89 @@ def _constraints_satisfied(constraints, p, tol=1e-8):
     return True
 
 
+def _minimize_with_restarts(cost, x0, bounds, method, extra_kwargs, n_restarts=1, rng=None, label=""):
+    """
+    Runs `scipy.optimize.minimize`, surfacing and acting on `res.success`
+    (previously ignored entirely -- only `res.fun`/`res.x` were read).
+
+    With the default `n_restarts=1`, this still runs a single optimization
+    from `x0` (identical to the pre-FIX-4 call), but now additionally: if
+    that single attempt does not converge, it retries once from a randomly
+    perturbed starting point (cheap -- it only costs extra evaluations on
+    the fits that actually need it) and logs a warning if even the retry
+    fails to converge, instead of silently returning a possibly poor fit.
+
+    With `n_restarts > 1`, several starting points are tried -- `x0` itself,
+    the bounds midpoint (a fresh start, paired with `x0` specifically so
+    that a bad neighbor-seeded starting point can't silently propagate
+    forward without a sanity-check alternative), and (if `n_restarts > 2`)
+    additional randomized points within `bounds` -- keeping whichever
+    converges to the lowest NLL.
+
+    Parameters:
+    -----------
+    cost : callable
+        The objective function to minimize.
+    x0 : array_like
+        The primary starting point (e.g. the bounds midpoint, or a
+        neighbor-seeded guess).
+    bounds : list of (lo, hi) tuples
+        Box bounds passed to `scipy.optimize.minimize`.
+    method : str
+        The `scipy.optimize.minimize` method.
+    extra_kwargs : dict
+        Additional kwargs forwarded to `scipy.optimize.minimize` (e.g.
+        `constraints`).
+    n_restarts : int, optional
+        Number of distinct starting points to try (default 1: unchanged
+        pre-FIX-4 behavior, aside from the res.success check above).
+    rng : np.random.Generator, optional
+        Random generator for the randomized restart points.
+    label : str, optional
+        Human-readable context appended to any convergence warning.
+
+    Returns:
+    --------
+    scipy.optimize.OptimizeResult
+        The best result found (lowest `.fun` among converged attempts, or
+        the least-bad attempt if none converged).
+    """
+    def _solve(x0_try):
+        return optimize.minimize(cost, x0=x0_try, bounds=bounds, method=method, **extra_kwargs)
+
+    candidates = [np.asarray(x0, dtype=float)]
+    if n_restarts > 1:
+        mid = np.array([(b[0] + b[1]) / 2.0 for b in bounds])
+        if not np.allclose(mid, candidates[0], atol=1e-12):
+            candidates.append(mid)
+        rng = rng if rng is not None else np.random.default_rng()
+        while len(candidates) < n_restarts:
+            candidates.append(np.array([rng.uniform(b[0], b[1]) for b in bounds]))
+        candidates = candidates[:n_restarts]
+
+    best = None
+    for x0_try in candidates:
+        res = _solve(x0_try)
+        if best is None or (res.success and not best.success) or (res.success == best.success and res.fun < best.fun):
+            best = res
+
+    if not best.success:
+        rng = rng if rng is not None else np.random.default_rng()
+        perturb_scale = np.array([0.1 * (b[1] - b[0]) for b in bounds])
+        perturbed = np.clip(candidates[0] + rng.normal(scale=perturb_scale), [b[0] for b in bounds], [b[1] for b in bounds])
+        retry_res = _solve(perturbed)
+        if retry_res.success or retry_res.fun < best.fun:
+            best = retry_res
+        if not best.success:
+            warnings.warn(f"scipy.optimize.minimize did not converge{label} (status={best.status}): {best.message}")
+
+    return best
+
+
 # --- 1. Scipy Continuous Optimizers ---
 def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compute_rates_func, seed=None,
                             likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
-                            bounds_func=None, constraints=None, scipy_method=None):
+                            bounds_func=None, constraints=None, scipy_method=None, n_restarts=1):
     """
     Performs an unconditional global maximum likelihood fit using SciPy's L-BFGS-B.
     
@@ -209,6 +290,12 @@ def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compu
         Explicit override for the `scipy.optimize.minimize` method (e.g.
         'trust-constr' for better-conditioned but slower constrained fits).
         Takes precedence over the constraints-based default.
+    n_restarts : int, optional
+        Number of distinct starting points to try, keeping whichever
+        converges to the lowest NLL (see `_minimize_with_restarts`). Default
+        1 preserves pre-FIX-4 behavior (a single fit from `x0`), except that
+        `res.success` is now always checked; a non-converged result
+        triggers one cheap perturbed retry and a warning if that also fails.
 
     Returns:
     --------
@@ -243,16 +330,14 @@ def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compu
         x0 = [(b[0] + b[1]) / 2.0 for b in resolved_bounds]
 
     method = _resolve_scipy_method(constraints, scipy_method)
-    minimize_kwargs = {"bounds": resolved_bounds, "method": method}
-    if constraints:
-        minimize_kwargs["constraints"] = constraints
+    extra_kwargs = {"constraints": constraints} if constraints else {}
 
-    res = optimize.minimize(cost, x0=x0, **minimize_kwargs)
+    res = _minimize_with_restarts(cost, x0, resolved_bounds, method, extra_kwargs, n_restarts, label=" (unconditional fit)")
     return res.fun, res.x
 
 def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, seed=None,
                              likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
-                             bounds_func=None, constraints=None, scipy_method=None):
+                             bounds_func=None, constraints=None, scipy_method=None, n_restarts=1):
     """
     Performs a conditional maximum likelihood fit (profiling 1 parameter) using SciPy.
     
@@ -305,6 +390,12 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model
         which `bounds_func` cannot express.
     scipy_method : str, optional
         Explicit override for the `scipy.optimize.minimize` method.
+    n_restarts : int, optional
+        Number of distinct starting points to try, keeping whichever
+        converges to the lowest NLL (see `_minimize_with_restarts`). Default
+        1 preserves pre-FIX-4 behavior (a single fit from `x0`), except that
+        `res.success` is now always checked; a non-converged result
+        triggers one cheap perturbed retry and a warning if that also fails.
 
     Returns:
     --------
@@ -354,11 +445,9 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model
         return cost(np.array([])), p
 
     method = _resolve_scipy_method(projected_constraints, scipy_method)
-    minimize_kwargs = {"bounds": free_bounds, "method": method}
-    if projected_constraints:
-        minimize_kwargs["constraints"] = projected_constraints
+    extra_kwargs = {"constraints": projected_constraints} if projected_constraints else {}
 
-    res = optimize.minimize(cost, x0=x0, **minimize_kwargs)
+    res = _minimize_with_restarts(cost, x0, free_bounds, method, extra_kwargs, n_restarts, label=f" (conditional 1D fit, fix_idx={fix_idx})")
 
     best_p = np.zeros(n_params)
     best_p[fix_idx] = test_val
@@ -369,7 +458,7 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model
 
 def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, seed=None,
                              likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
-                             bounds_func=None, constraints=None, scipy_method=None):
+                             bounds_func=None, constraints=None, scipy_method=None, n_restarts=1):
     """
     Performs a conditional maximum likelihood fit (profiling 2 parameters) using SciPy.
     
@@ -411,6 +500,12 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_m
         parameter existed.
     scipy_method : str, optional
         Explicit override for the `scipy.optimize.minimize` method.
+    n_restarts : int, optional
+        Number of distinct starting points to try, keeping whichever
+        converges to the lowest NLL (see `_minimize_with_restarts`). Default
+        1 preserves pre-FIX-4 behavior (a single fit from `x0`), except that
+        `res.success` is now always checked; a non-converged result
+        triggers one cheap perturbed retry and a warning if that also fails.
 
     Returns:
     --------
@@ -463,11 +558,9 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_m
         return cost(np.array([])), p
 
     method = _resolve_scipy_method(projected_constraints, scipy_method)
-    minimize_kwargs = {"bounds": free_bounds, "method": method}
-    if projected_constraints:
-        minimize_kwargs["constraints"] = projected_constraints
+    extra_kwargs = {"constraints": projected_constraints} if projected_constraints else {}
 
-    res = optimize.minimize(cost, x0=x0, **minimize_kwargs)
+    res = _minimize_with_restarts(cost, x0, free_bounds, method, extra_kwargs, n_restarts, label=f" (conditional 2D fit, fix_A={fix_A}, fix_B={fix_B})")
 
     best_p = np.zeros(n_params)
     best_p[fix_A] = test_vA

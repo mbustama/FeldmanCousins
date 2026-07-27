@@ -246,7 +246,8 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                          use_finite_mc_correction_binned=True, S_sigma2=None, B_sigma2=None,
                          compute_1D_intervals=True, compute_2D_intervals=True, param_names=None,
                          smooth_1d=False, smooth_2d=False, bounds_func=None,
-                         constraints=None, scipy_method=None):
+                         constraints=None, scipy_method=None,
+                         n_restarts=1, neighbor_seeding=True):
     """
     Main execution pipeline for the Feldman-Cousins unified approach.
     
@@ -340,6 +341,31 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
         Explicit override for the `scipy.optimize.minimize` method (e.g.
         'trust-constr' for better-conditioned but slower constrained fits).
         Takes precedence over the constraints-based default.
+    n_restarts : int, optional
+        Forwarded to the scipy fit functions for the DATA fits (Phase 0's
+        unconditional fit and the Phase 1/2 conditional fits) -- NOT the MC
+        toy fits, which are already well-seeded from the conditional MLE
+        (`true_params`). Number of distinct starting points to try per fit,
+        keeping whichever converges to the lowest NLL (see
+        `optimizers._minimize_with_restarts`). Default 1 preserves pre-
+        FIX-4 behavior (a single fit per point), except that `res.success`
+        is now always checked, with a cheap perturbed retry and warning on
+        non-convergence -- this applies even at the default n_restarts=1,
+        for every scipy fit call including the toy fits.
+    neighbor_seeding : bool, optional
+        When True (default) and strategy="scipy", the DATA fit (not the MC
+        toys, which are already seeded from the conditional MLE) at each 1D/
+        2D scan grid point is seeded from an adjacent, already-evaluated
+        grid point's profiled parameters, instead of always starting fresh
+        from the bounds midpoint -- these loops already iterate the grid in
+        order, so neighboring points' solutions are informative starting
+        guesses. Whenever a neighbor seed is used, the effective number of
+        restarts for that specific call is raised to at least 2 (the
+        neighbor-seeded start plus a fresh bounds-midpoint start, keeping
+        whichever is better), so a bad neighbor optimum can't silently
+        cascade forward across many subsequent grid points. Set False to
+        disable and always start from the bounds midpoint (pre-FIX-4
+        behavior for the data fit).
 
     Returns:
     --------
@@ -480,7 +506,7 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
         elif strategy in ["ultranest", "hybrid"]:
             data_uncond_nll, best_params = unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, compute_rates_func, verbose, likelihood_type, S_sigma2, B_sigma2, use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
         elif strategy == "scipy":
-            data_uncond_nll, best_params = unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
+            data_uncond_nll, best_params = unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, n_restarts=n_restarts)
         
         results["best_fit"] = best_params
         results["data_uncond_nll"] = data_uncond_nll
@@ -522,7 +548,18 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                 elif strategy in ["ultranest", "hybrid"]:
                     cond_nll, prof_p = conditional_fit_1d_ultranest(pt, p_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose, likelihood_type, S_sigma2, B_sigma2, use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
                 elif strategy == "scipy":
-                    cond_nll, prof_p = conditional_fit_1d_scipy(pt, p_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
+                    # Neighbor warm-start: seed this grid point's DATA fit from the
+                    # immediately preceding (already-evaluated) grid point's profiled
+                    # nuisance parameters, instead of always starting fresh from the
+                    # bounds midpoint. Paired with a forced-up n_restarts (>= 2) so a
+                    # bad neighbor optimum can't silently cascade forward -- the fresh
+                    # bounds-midpoint start is always tried alongside it.
+                    neighbor_seed = None
+                    effective_n_restarts = n_restarts
+                    if neighbor_seeding and i > 0 and not np.any(np.isnan(prof_params_arr[i - 1])):
+                        neighbor_seed = [prof_params_arr[i - 1][k] for k in range(n_params) if k != p_idx]
+                        effective_n_restarts = max(n_restarts, 2)
+                    cond_nll, prof_p = conditional_fit_1d_scipy(pt, p_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, seed=neighbor_seed, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, n_restarts=effective_n_restarts)
                 
                 prof_params_arr[i] = prof_p
                 # Evaluate the actual PLR data statistic (bounded at 0 to fix numerical floating point noise)
@@ -569,25 +606,48 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                     cond_grid_points = np.array(list(itertools.product(*free_grids)), dtype=np.float64)
             else:
                 cond_grid_points = None
-            
-            # Helper function to evaluate toys for a specific (i, j) 2D coordinate 
+
+            # In-memory cache of already-evaluated (i, j) -> full profiled parameter
+            # vector, scoped to this pair's scan, used for neighbor warm-starting
+            # below (mirrors the 1D loop's use of prof_params_arr, which the 2D scan
+            # has no persistent equivalent of).
+            prof_params_2d = {}
+
+            def _lookup_2d_neighbor_seed(i, j):
+                if not neighbor_seeding:
+                    return None
+                for ni, nj in ((i - 1, j), (i, j - 1)):
+                    if (ni, nj) in prof_params_2d:
+                        neighbor_full = prof_params_2d[(ni, nj)]
+                        return [neighbor_full[k] for k in range(n_params) if k not in (fix_A, fix_B)]
+                return None
+
+            # Helper function to evaluate toys for a specific (i, j) 2D coordinate
             def eval_2d_point(i, j, pair_name=pair_name, gridA=gridA, gridB=gridB, fix_A=fix_A, fix_B=fix_B, cond_grid_points=cond_grid_points):
                 if not np.isnan(results[f"2d_t_critical_{pair_name}"][cl[0]][i, j]):
                     return
-                    
+
                 p_A, p_B = gridA[i], gridB[j]
-                
+
+                # Neighbor warm-start: seed this cell's DATA fit from an adjacent,
+                # already-evaluated cell's profiled nuisance parameters. Paired with
+                # a forced-up n_restarts (>= 2) so a bad neighbor optimum can't
+                # silently cascade -- a fresh bounds-midpoint start is always tried
+                # alongside it.
+                neighbor_seed = _lookup_2d_neighbor_seed(i, j) if strategy == "scipy" else None
+                effective_n_restarts = max(n_restarts, 2) if neighbor_seed is not None else n_restarts
+
                 # Step 1. Exact Data NLL Calculation (Profiling out remaining nuisance pars)
                 if np.isnan(results[f"2d_t_data_{pair_name}"][i, j]):
                     if strategy == "grid":
-                        if likelihood_type == "binned": 
+                        if likelihood_type == "binned":
                             cond_nll, prof_p = conditional_fit_grid_2d(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, cond_grid_points, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func)
-                        else: 
+                        else:
                             cond_nll, prof_p = conditional_fit_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, cond_grid_points, compute_rates_func)
                     elif strategy in ["ultranest", "hybrid"]:
                         cond_nll, prof_p = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
                     elif strategy == "scipy":
-                        cond_nll, prof_p = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
+                        cond_nll, prof_p = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, seed=neighbor_seed, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, n_restarts=effective_n_restarts)
 
                     results[f"2d_t_data_{pair_name}"][i, j] = max(0.0, cond_nll - data_uncond_nll)
                     true_params = prof_p
@@ -601,8 +661,11 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                     elif strategy in ["ultranest", "hybrid"]:
                         _, true_params = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
                     elif strategy == "scipy":
-                        _, true_params = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
-                
+                        _, true_params = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, seed=neighbor_seed, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, n_restarts=effective_n_restarts)
+
+                if strategy == "scipy":
+                    prof_params_2d[(i, j)] = true_params
+
                 # Step 2. Sequential Toy Assessment to get critical threshold for coverage
                 if strategy == "grid":
                     if likelihood_type == "binned": 
