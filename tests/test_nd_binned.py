@@ -175,3 +175,98 @@ def test_compute_fc_intervals_accepts_genuine_2d_histogram(tmp_path):
     )
 
     assert np.isclose(results_2d["data_uncond_nll"], results_1d["data_uncond_nll"])
+
+
+def test_compute_fc_intervals_accepts_non_contiguous_data_scipy_strategy(tmp_path):
+    """
+    End-to-end (not just calc_nll in isolation): a non-contiguous (transposed)
+    histogram passed as `data` must flow correctly through the full public
+    compute_fc_intervals API under strategy="scipy", and give the same
+    unconditional NLL as a contiguous copy of the identical values.
+    """
+    S_template = np.array([[1.0, 2.0, 0.5], [3.0, 1.5, 2.0]])
+    B_template = np.array([[2.0, 1.0, 1.0], [1.0, 2.5, 0.5]])
+
+    np.random.seed(1)
+    data = np.random.poisson(1.0 * S_template + 1.0 * B_template).astype(float)
+
+    data_noncontig = data.T  # transpose -> non-contiguous (3, 2) view
+    data_contig = data.T.copy()  # same shape/values, contiguous
+    assert not data_noncontig.flags["C_CONTIGUOUS"]
+    assert data_contig.flags["C_CONTIGUOUS"]
+    assert np.array_equal(data_noncontig, data_contig)
+
+    S_template_T = S_template.T
+    B_template_T = B_template.T
+
+    @njit(fastmath=True, nogil=True)
+    def compute_rates(params, S_sumw2, B_sumw2):
+        mu = params[0] * S_template_T + params[1] * B_template_T
+        return mu, S_sumw2
+
+    grids = [np.linspace(0.2, 2.0, 4), np.linspace(0.2, 2.0, 4)]
+
+    results_noncontig, _ = compute_fc_intervals(
+        data=data_noncontig, grids=grids, compute_rates_func=compute_rates,
+        cl=[0.68], n_toys=10, strategy="scipy", num_cores=1, verbose=0,
+        sparsify_grid=False, warm_start=False, likelihood_type="binned",
+        compute_1D_intervals=True, compute_2D_intervals=False,
+        save_directory=str(tmp_path / "noncontig"),
+    )
+    results_contig, _ = compute_fc_intervals(
+        data=data_contig, grids=grids, compute_rates_func=compute_rates,
+        cl=[0.68], n_toys=10, strategy="scipy", num_cores=1, verbose=0,
+        sparsify_grid=False, warm_start=False, likelihood_type="binned",
+        compute_1D_intervals=True, compute_2D_intervals=False,
+        save_directory=str(tmp_path / "contig"),
+    )
+
+    assert np.isclose(results_noncontig["data_uncond_nll"], results_contig["data_uncond_nll"])
+
+
+def test_compute_fc_intervals_accepts_non_contiguous_data_grid_strategy(tmp_path):
+    """
+    Same end-to-end guarantee as the scipy-strategy version above, but under
+    strategy="grid" with both 1D and 2D intervals enabled -- the only
+    combination that exercises generate_and_fit_toys_grid_1d AND
+    generate_and_fit_toys_grid_2d, the two toy generators (besides calc_nll
+    itself) that needed the non-contiguous-input fix. Grid/n_toys kept
+    deliberately tiny since this path is otherwise a full 2D grid scan.
+    """
+    S_template = np.array([[1.0, 2.0, 0.5], [3.0, 1.5, 2.0]])
+    B_template = np.array([[2.0, 1.0, 1.0], [1.0, 2.5, 0.5]])
+
+    np.random.seed(1)
+    data = np.random.poisson(1.0 * S_template + 1.0 * B_template).astype(float)
+
+    data_noncontig = data.T
+    data_contig = data.T.copy()
+    assert not data_noncontig.flags["C_CONTIGUOUS"]
+    assert data_contig.flags["C_CONTIGUOUS"]
+
+    S_template_T = S_template.T
+    B_template_T = B_template.T
+
+    @njit(fastmath=True, nogil=True)
+    def compute_rates(params, S_sumw2, B_sumw2):
+        mu = params[0] * S_template_T + params[1] * B_template_T
+        return mu, S_sumw2
+
+    grids = [np.linspace(0.5, 1.5, 3), np.linspace(0.5, 1.5, 3)]
+
+    results_noncontig, _ = compute_fc_intervals(
+        data=data_noncontig, grids=grids, compute_rates_func=compute_rates,
+        cl=[0.68], n_toys=5, strategy="grid", num_cores=1, verbose=0,
+        sparsify_grid=False, warm_start=False, likelihood_type="binned",
+        compute_1D_intervals=True, compute_2D_intervals=True,
+        save_directory=str(tmp_path / "noncontig"),
+    )
+    results_contig, _ = compute_fc_intervals(
+        data=data_contig, grids=grids, compute_rates_func=compute_rates,
+        cl=[0.68], n_toys=5, strategy="grid", num_cores=1, verbose=0,
+        sparsify_grid=False, warm_start=False, likelihood_type="binned",
+        compute_1D_intervals=True, compute_2D_intervals=True,
+        save_directory=str(tmp_path / "contig"),
+    )
+
+    assert np.isclose(results_noncontig["data_uncond_nll"], results_contig["data_uncond_nll"])
