@@ -126,6 +126,7 @@ FeldmanCousins/
 │   ├── source/
 │   │   ├── _static/
 │   │   │   └── pyfc_logo.png        # Project branding asset
+│   │   ├── changelog.rst            # Rendered changelog page (mirrors root CHANGELOG.md)
 │   │   ├── conf.py                  # Sphinx build configuration
 │   │   ├── configuration.rst        # Interactive CLI tool and parameter definitions
 │   │   ├── index.rst                # Master documentation page with high-level overview and table of contents
@@ -138,8 +139,10 @@ FeldmanCousins/
 │   │   ├── references.rst           # Bibliography page rendering
 │   │   └── refs.bib                 # BibTeX citations for physics and statistics literature
 │   ├── Makefile                     # Build commands for Unix
-│   └── make.bat                     # Build commands for Windows
-├── examples/                        
+│   ├── make.bat                     # Build commands for Windows
+│   └── pyfc.rst                     # Top-level autodoc stub (duplicate of source/pyfc.rst)
+├── examples/
+│   ├── pyfc_joint_constraints_tutorial.ipynb  # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
 │   └── pyfc_tutorial.ipynb          # End-to-end Jupyter notebook tutorial
 ├── pyfc/                            # Main Python package
 │   ├── __init__.py                  # Package initialization and metadata
@@ -152,13 +155,18 @@ FeldmanCousins/
 │   ├── toys.py                      # Multiprocessing engines for MC pseudo-experiment generation
 │   └── unbinned.py                  # Extended Unbinned Maximum Likelihood (EUML) formulations
 ├── tests/                           # Unit and integration test suite
+│   ├── test_bounds_func.py          # Tests for the bounds_func parameter-dependent bounds mechanism
+│   ├── test_constraints.py          # Tests for scipy/UltraNest LinearConstraint/NonlinearConstraint support
 │   ├── test_core.py                 # Core installation and import tests, including checks for optional dependencies
 │   ├── test_io.py                   # Tests for File I/O and intermediate .npz checkpoint recovery mechanisms
 │   ├── test_multiprocessing.py      # Tests for unbinned execution and multi-processing concurrency using ProcessPoolExecutor
 │   ├── test_numba_compilation.py    # Tests to ensure Numba JIT compilation executes correctly on the host architecture
 │   ├── test_optimizers.py           # Tests for continuous optimization routines, including SciPy boundary clamping
+│   ├── test_restarts.py             # Tests for optimizer restarts, neighbor warm-starting, and res.success handling
+│   ├── test_smoothing.py            # Tests for the smoothed unphysical-rate NLL penalty
 │   └── test_statistics.py           # Tests for statistical correctness, likelihood behavior, and Asimov treatment convergence
 ├── .gitignore                       # Git untracked files exclusions
+├── CHANGELOG.md                     # Version history and notable changes
 ├── LICENSE                          # Open-source license terms
 ├── pyproject.toml                   # Build system and dependency specifications
 └── README.md                        # Project documentation

@@ -75,9 +75,22 @@ that needed to fit flavor fractions subject to `f_e + f_mu <= 1`.
   neighbor optimum can't silently cascade forward. Set `False` to restore
   the always-fresh-start behavior.
 - README section "Handling Joint/Simplex-Constrained Parameters" (also
-  mirrored, condensed, in `docs/source/methodology.rst`): a worked
-  end-to-end tutorial for the `f_e + f_mu <= 1` example, covering both
-  `bounds_func` and `constraints` and when to use each.
+  mirrored, with the same worked code examples, in
+  `docs/source/methodology.rst`): a worked end-to-end tutorial for the
+  `f_e + f_mu <= 1` example, covering both `bounds_func` and `constraints`
+  and when to use each. `docs/source/configuration.rst` and `quickstart.rst`
+  cross-reference it, and a new `docs/source/changelog.rst` page (wired
+  into the Sphinx toctree) mirrors this file.
+- New example notebook, `examples/pyfc_joint_constraints_tutorial.ipynb`:
+  a hands-on walkthrough of both mechanisms using a toy 3-parameter
+  neutrino flavor-fraction model (`f_e`, `f_mu`, `norm`) constrained to the
+  standard 2-simplex. Reproduces the flat-gradient plateau trap with a
+  hard-cutoff rate function and no constraint handling, then fixes it with
+  `bounds_func`; demonstrates `constraints` for the case `bounds_func`
+  cannot express (two simultaneously-free parameters); runs a real
+  `compute_fc_intervals` pipeline and plots the resulting 2D confidence
+  region confined to the simplex; and includes a bonus
+  `NonlinearConstraint` (unit-disk) example.
 
 ## [0.9.2] and earlier
 

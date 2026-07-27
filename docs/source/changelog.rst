@@ -84,6 +84,18 @@ Added
   mirrored, with worked code examples, in :ref:`joint-simplex-constraints`):
   a worked end-to-end tutorial for the ``f_e + f_mu <= 1`` example, covering
   both ``bounds_func`` and ``constraints`` and when to use each.
+  ``configuration.rst`` and ``quickstart.rst`` cross-reference it, and this
+  page itself is new.
+* New example notebook, ``examples/pyfc_joint_constraints_tutorial.ipynb``:
+  a hands-on walkthrough of both mechanisms using a toy 3-parameter
+  neutrino flavor-fraction model (``f_e``, ``f_mu``, ``norm``) constrained
+  to the standard 2-simplex. Reproduces the flat-gradient plateau trap with
+  a hard-cutoff rate function and no constraint handling, then fixes it
+  with ``bounds_func``; demonstrates ``constraints`` for the case
+  ``bounds_func`` cannot express (two simultaneously-free parameters); runs
+  a real ``compute_fc_intervals`` pipeline and plots the resulting 2D
+  confidence region confined to the simplex; and includes a bonus
+  ``NonlinearConstraint`` (unit-disk) example.
 
 0.9.2 and earlier
 -----------------

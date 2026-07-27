@@ -18,7 +18,7 @@ PyFC: A Python Framework for Feldman-Cousins Confidence Intervals
    **Important Links:**
 
    * `GitHub Repository <https://github.com/mbustama/FeldmanCousins>`_
-   * `Example Jupyter Notebook <https://github.com/mbustama/FeldmanCousins/blob/main/examples/pyfc_tutorial.ipynb>`_
+   * `Example Notebooks <https://github.com/mbustama/FeldmanCousins/tree/main/examples>`_
 
 **PyFC** is a rigorous, high-performance frequentist statistical analysis framework for Python. It automates the construction of classical confidence intervals and regions using the unified Feldman-Cousins approach, seamlessly transitioning between one-sided upper limits and two-sided bounds while guaranteeing exact frequentist coverage.
 
