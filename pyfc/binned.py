@@ -71,7 +71,10 @@ def calc_nll(params, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
         The observed data counts (or toy data) in each bin. May be an
         arbitrary N-dimensional histogram (e.g. shape (E_bins, cos_theta_bins));
         it is flattened internally, so the NLL is a sum over all bins
-        regardless of how they are laid out spatially.
+        regardless of how they are laid out spatially. Non-contiguous views
+        (e.g. a transposed histogram) are handled by copying to a contiguous
+        layout before flattening, since numba's nopython `.reshape(-1)` only
+        accepts C-contiguous input.
     S_sumw2 : array_like, same shape as N_obs
         Sum of squared MC weights (sum(w_i^2)) per bin for the signal
         template -- the standard per-bin variance estimator for a weighted
@@ -115,9 +118,9 @@ def calc_nll(params, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
     nll = 0.0
     mu, sigma2_arr = compute_rates_func(params, S_sumw2, B_sumw2)
 
-    mu_flat = mu.reshape(-1)
-    N_obs_flat = N_obs.reshape(-1)
-    sigma2_flat = sigma2_arr.reshape(-1)
+    mu_flat = np.ascontiguousarray(mu).reshape(-1)
+    N_obs_flat = np.ascontiguousarray(N_obs).reshape(-1)
+    sigma2_flat = np.ascontiguousarray(sigma2_arr).reshape(-1)
 
     if mu_flat.shape[0] != N_obs_flat.shape[0]:
         raise ValueError("compute_rates_func's returned `mu` does not have the same number of bins as `N_obs`.")
@@ -372,7 +375,7 @@ def generate_and_fit_toys_grid_1d(test_val, fix_idx, true_params, n_params,
     """
     t_statistics = np.zeros(n_toys)
     mu_true, _ = compute_rates_func(true_params, S_sumw2, B_sumw2)
-    mu_true_flat = mu_true.reshape(-1)
+    mu_true_flat = np.ascontiguousarray(mu_true).reshape(-1)
     n_bins = mu_true_flat.shape[0]
 
     for t in prange(n_toys):
@@ -427,7 +430,7 @@ def generate_and_fit_toys_grid_2d(test_vA, test_vB, fix_A, fix_B, true_params, n
     """
     t_statistics = np.zeros(n_toys)
     mu_true, _ = compute_rates_func(true_params, S_sumw2, B_sumw2)
-    mu_true_flat = mu_true.reshape(-1)
+    mu_true_flat = np.ascontiguousarray(mu_true).reshape(-1)
     n_bins = mu_true_flat.shape[0]
 
     for t in prange(n_toys):

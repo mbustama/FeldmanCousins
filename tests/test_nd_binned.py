@@ -62,6 +62,30 @@ def test_calc_nll_2d_matches_flattened_1d_finite_mc():
     assert nll_2d == nll_1d
 
 
+def test_calc_nll_handles_non_contiguous_input():
+    """
+    A transposed (non-contiguous) N-D array must not crash calc_nll under numba
+    (nopython `.reshape(-1)` only accepts C-contiguous input), and must give the
+    same NLL as an equivalent contiguous copy of the same shape/values.
+    """
+    params = np.array([2.0, 1.0])
+    N_obs_2d = np.array([[5.0, 3.0, 9.0], [8.0, 2.0, 4.0]])
+    S_sumw2_2d = np.zeros((2, 3))
+    B_sumw2_2d = np.zeros((2, 3))
+
+    N_obs_T = N_obs_2d.T
+    S_sumw2_T = S_sumw2_2d.T
+    B_sumw2_T = B_sumw2_2d.T
+    assert not N_obs_T.flags["C_CONTIGUOUS"]
+
+    nll_noncontiguous = calc_nll(params, N_obs_T, S_sumw2_T, B_sumw2_T, False, _compute_rates_nd)
+    nll_contiguous = calc_nll(
+        params, N_obs_T.copy(), S_sumw2_T.copy(), B_sumw2_T.copy(), False, _compute_rates_nd
+    )
+
+    assert nll_noncontiguous == nll_contiguous
+
+
 def test_calc_nll_raises_on_mu_shape_mismatch():
     """
     compute_rates_func returning a `mu` with a different bin count than
