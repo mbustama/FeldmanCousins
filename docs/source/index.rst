@@ -33,6 +33,7 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
    configuration
    methodology
    outputs
+   changelog
    references
 
 .. toctree::

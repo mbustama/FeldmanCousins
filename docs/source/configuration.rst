@@ -37,6 +37,10 @@ Configuration Parameters
      - Optimizer used for finding global and conditional likelihood minima.
      - ``"scipy"``, ``"ultranest"``, ``"hybrid"``, ``"grid"``
      - ``"scipy"``
+   * - ``scipy_method``
+     - Overrides the ``scipy.optimize.minimize`` method. Only meaningful for ``strategy="scipy"``/``"hybrid"``. ``null`` lets PyFC pick automatically: ``"L-BFGS-B"`` by default, or ``"SLSQP"`` if ``constraints`` are supplied programmatically (see :ref:`joint-simplex-constraints`).
+     - ``null``, ``"L-BFGS-B"``, ``"SLSQP"``, ``"trust-constr"``
+     - ``null``
    * - ``use_finite_mc_correction_binned``
      - Shifts Poisson likelihood to a Negative Binomial to account for finite simulation stats.
      - ``True``, ``False``

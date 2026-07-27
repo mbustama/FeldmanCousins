@@ -4,6 +4,9 @@ Quick Start Guide
 .. note::
    Because PyFC evaluates abstract :math:`N`-dimensional grids, you **must** supply Python functions instructing the framework how to mathematically map a coordinate in parameter space to your physical expectations.
 
+.. note::
+   If two or more of your parameters are subject to a **joint** constraint (e.g. a simplex like ``a + b <= 1``) rather than independent per-parameter bounds, see :ref:`joint-simplex-constraints` for the ``bounds_func``/``constraints`` mechanisms before reaching for a hand-rolled penalty function.
+
 1. Binned Models
 ----------------
 For a binned analysis, ``S_model`` and ``B_model`` are passed as standard NumPy arrays representing fixed templates. You must write a ``compute_rates_func`` that combines them with your varied parameters to yield the total expected bin counts (:math:`\mu`) and variances (:math:`\sigma^2`).
