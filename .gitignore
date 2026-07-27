@@ -8,3 +8,5 @@ PyFC.egg-info/
 *.csv
 docs/build/
 examples/fc_tutorial_output/
+examples/joint_constraints_output/
+PyFeldmanCousins.egg-info/
