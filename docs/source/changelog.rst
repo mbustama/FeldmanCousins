@@ -135,7 +135,8 @@ Changed
      regression, but anyone diffing raw NLL outputs against pre-fix runs
      where the fit passed through an unphysical region should be aware of
      this). For all physical inputs (``mu_i > 0`` / all ``p_events[k] > 0``),
-     output is byte-for-byte identical to before.
+     output is practically identical to before (matches to within 1e-12
+     relative/absolute tolerance; see ``tests/test_smoothing.py``).
 
 Fixed
 ~~~~~

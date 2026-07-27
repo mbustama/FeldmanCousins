@@ -114,7 +114,8 @@ def calc_nll(params, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
     actually is below that floor, so the gradient w.r.t. mu_i stays informative
     and points back toward mu_i > 0. This bin-local contribution is added to the
     running total rather than short-circuiting the whole function. For all
-    mu_i > 0, behavior is byte-for-byte identical to before this change.
+    mu_i > 0, behavior is practically identical to before this change (matches
+    to within 1e-12 relative/absolute tolerance; see tests/test_smoothing.py).
     """
     nll = 0.0
     mu, sigma2_arr = compute_rates_func(params, S_sumw2, B_sumw2)

@@ -4,8 +4,9 @@ early-return) in `binned.calc_nll` and `unbinned.calc_nll_unbinned`.
 
 These guard two properties:
   1. Backward compatibility: for every bin/event where the model prediction
-     is physical (mu_i > 0 / p_events[k] > 0), the NLL must be byte-for-byte
-     identical to the pre-fix formula.
+     is physical (mu_i > 0 / p_events[k] > 0), the NLL must be practically
+     identical to the pre-fix formula (matches an independent reimplementation
+     to within 1e-12 relative/absolute tolerance).
   2. The fix itself: scanning a parameter through the unphysical region must
      produce a smooth, monotonically-worsening NLL rather than a flat
      constant plateau (the "flat gradient traps L-BFGS-B" failure mode).

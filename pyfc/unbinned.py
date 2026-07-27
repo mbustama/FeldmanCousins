@@ -69,7 +69,8 @@ def calc_nll_unbinned(params, len_obs, probs, compute_rates_func):
     gradient stays informative instead of flat. This is applied elementwise
     (not collapsed via `np.any`), so multiple unphysical events each contribute
     independently. For all events with p_events[k] > 0, behavior is
-    byte-for-byte identical to before this change.
+    practically identical to before this change (matches to within 1e-12
+    relative/absolute tolerance; see tests/test_smoothing.py).
     """
     expected_total, p_events = compute_rates_func(params, probs)
 
