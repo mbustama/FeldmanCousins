@@ -34,10 +34,127 @@ except ImportError:
     ULTRANEST_AVAILABLE = False
 
 
+# --- 0. Shared Constraint Helpers ---
+# `scipy.optimize.minimize` only accepts `constraints=` for methods 'COBYLA',
+# 'SLSQP', 'trust-constr' -- NOT the default 'L-BFGS-B'. These helpers let
+# `constraints` (a list of LinearConstraint/NonlinearConstraint objects,
+# expressed in the FULL n_params space) be supplied to the fit functions
+# below without changing default behavior when no constraints are given.
+def _resolve_scipy_method(constraints, scipy_method):
+    """
+    Picks the scipy.optimize.minimize method: an explicit `scipy_method`
+    always wins; otherwise 'SLSQP' if constraints were supplied (fast,
+    supports bounds+constraints together), else the original 'L-BFGS-B'
+    (unchanged default when constraints is None/empty).
+    """
+    if scipy_method is not None:
+        return scipy_method
+    if constraints:
+        return 'SLSQP'
+    return 'L-BFGS-B'
+
+
+def _project_linear_constraint(constraint, fixed_indices_values, free_indices):
+    """
+    Projects a single constraint expressed over the FULL n_params vector down
+    to the reduced subspace of `free_indices`, substituting the currently-
+    fixed parameter value(s) as a constant offset. Used by
+    conditional_fit_1d_scipy/conditional_fit_2d_scipy, whose optimization
+    vector only spans the free (profiled) parameters -- the fixed
+    parameter(s) are not part of `x` at all.
+
+    For a LinearConstraint (lb <= A x <= ub), splitting A's columns into the
+    free and fixed parts gives A x = A_free x_free + A_fixed x_fixed, so the
+    projected constraint is (lb - A_fixed @ x_fixed) <= A_free x_free <=
+    (ub - A_fixed @ x_fixed). Sanity check: for a single linear constraint
+    like f_e + f_mu <= 1 with f_e fixed, this reduces to exactly the
+    tightened box bound produced by FIX 2's `bounds_func` mechanism.
+
+    For a NonlinearConstraint, the fixed values are substituted into a
+    wrapper around the original `fun` (and `jac`, if one was supplied),
+    reconstructing the full parameter vector before evaluating it.
+
+    Parameters:
+    -----------
+    constraint : scipy.optimize.LinearConstraint or scipy.optimize.NonlinearConstraint
+        A single constraint expressed over the full n_params vector.
+    fixed_indices_values : dict[int, float]
+        Mapping of fixed-parameter index -> its current test value.
+    free_indices : list of int
+        Indices (in the full n_params space) of the parameters being optimized,
+        in the order they appear in the reduced optimization vector.
+
+    Returns:
+    --------
+    A new constraint object of the same type, expressed over only
+    `len(free_indices)` variables (in that order).
+    """
+    fixed_indices = list(fixed_indices_values.keys())
+    fixed_values = np.array([fixed_indices_values[i] for i in fixed_indices], dtype=float)
+    n_params = len(free_indices) + len(fixed_indices)
+
+    if isinstance(constraint, optimize.LinearConstraint):
+        A = np.atleast_2d(np.asarray(constraint.A, dtype=float))
+        A_free = A[:, free_indices]
+        offset = A[:, fixed_indices] @ fixed_values if fixed_indices else 0.0
+        lb = np.asarray(constraint.lb, dtype=float) - offset
+        ub = np.asarray(constraint.ub, dtype=float) - offset
+        return optimize.LinearConstraint(A_free, lb, ub)
+
+    if isinstance(constraint, optimize.NonlinearConstraint):
+        def _expand(free_p):
+            p = np.zeros(n_params)
+            for idx, val in fixed_indices_values.items():
+                p[idx] = val
+            for idx, val in zip(free_indices, free_p):
+                p[idx] = val
+            return p
+
+        def fun_free(free_p):
+            return constraint.fun(_expand(free_p))
+
+        jac_free = None
+        if callable(getattr(constraint, "jac", None)):
+            def jac_free(free_p):
+                return np.asarray(constraint.jac(_expand(free_p)))[:, free_indices]
+
+        kwargs = {"jac": jac_free} if jac_free is not None else {}
+        return optimize.NonlinearConstraint(fun_free, constraint.lb, constraint.ub, **kwargs)
+
+    raise TypeError(f"Unsupported constraint type for projection: {type(constraint)!r}")
+
+
+def _project_constraints(constraints, fixed_indices_values, free_indices):
+    """Applies `_project_linear_constraint` to a list of constraints (or None)."""
+    if not constraints:
+        return []
+    return [_project_linear_constraint(c, fixed_indices_values, free_indices) for c in constraints]
+
+
+def _constraints_satisfied(constraints, p, tol=1e-8):
+    """
+    Evaluates a list of constraints (expressed over the full n_params vector)
+    at the fully-assembled parameter point `p`. Used by the UltraNest fit
+    functions: since nested sampling doesn't use gradients, it doesn't suffer
+    the flat-gradient trap that motivates the scipy-side SLSQP/projection
+    machinery above, so a violated constraint can simply be signaled with a
+    very large negative log-likelihood.
+    """
+    if not constraints:
+        return True
+    for c in constraints:
+        val = np.atleast_1d(c.A @ p if isinstance(c, optimize.LinearConstraint) else c.fun(p))
+        lb = np.atleast_1d(c.lb)
+        ub = np.atleast_1d(c.ub)
+        if np.any(val < lb - tol) or np.any(val > ub + tol):
+            return False
+    return True
+
+
 # --- 1. Scipy Continuous Optimizers ---
 def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compute_rates_func, seed=None,
                             likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
-                            bounds_func=None):
+                            bounds_func=None, constraints=None, scipy_method=None):
     """
     Performs an unconditional global maximum likelihood fit using SciPy's L-BFGS-B.
     
@@ -82,6 +199,16 @@ def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compu
         `fixed_values` dict since nothing is fixed in an unconditional fit --
         and must return one `(lo, hi)` tuple per parameter, in index order.
         If None (default), `bounds_list` is used unmodified.
+    constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
+        Joint constraints among the full n_params vector (see module
+        docstring). When non-empty, `method` defaults to 'SLSQP' instead of
+        'L-BFGS-B' (required, since L-BFGS-B does not support `constraints`).
+        When None/empty (default), behavior and method are UNCHANGED from
+        before this parameter existed.
+    scipy_method : str, optional
+        Explicit override for the `scipy.optimize.minimize` method (e.g.
+        'trust-constr' for better-conditioned but slower constrained fits).
+        Takes precedence over the constraints-based default.
 
     Returns:
     --------
@@ -115,12 +242,17 @@ def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compu
     else:
         x0 = [(b[0] + b[1]) / 2.0 for b in resolved_bounds]
 
-    res = optimize.minimize(cost, x0=x0, bounds=resolved_bounds, method='L-BFGS-B')
+    method = _resolve_scipy_method(constraints, scipy_method)
+    minimize_kwargs = {"bounds": resolved_bounds, "method": method}
+    if constraints:
+        minimize_kwargs["constraints"] = constraints
+
+    res = optimize.minimize(cost, x0=x0, **minimize_kwargs)
     return res.fun, res.x
 
 def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, seed=None,
                              likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
-                             bounds_func=None):
+                             bounds_func=None, constraints=None, scipy_method=None):
     """
     Performs a conditional maximum likelihood fit (profiling 1 parameter) using SciPy.
     
@@ -160,6 +292,19 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model
         bounds-midpoint starting guess so it can never land in forbidden
         territory. If None (default), each free parameter uses its static
         `bounds_list[i]` unmodified -- identical to pre-FIX-2 behavior.
+    constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
+        Joint constraints among the FULL n_params vector (see module
+        docstring and `_project_linear_constraint`). Since `fix_idx` is not
+        part of this function's optimization vector, each constraint is
+        projected down to the free-parameter subspace before being passed to
+        SciPy, substituting `test_val` as a constant offset. When non-empty,
+        `method` defaults to 'SLSQP' instead of 'L-BFGS-B'. When None/empty
+        (default), behavior and method are UNCHANGED from before this
+        parameter existed. Use `constraints` (rather than `bounds_func`) for
+        constraints among multiple simultaneously-FREE nuisance parameters,
+        which `bounds_func` cannot express.
+    scipy_method : str, optional
+        Explicit override for the `scipy.optimize.minimize` method.
 
     Returns:
     --------
@@ -173,6 +318,7 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model
         free_bounds = bounds_func({fix_idx: test_val}, free_indices, bounds_list)
     else:
         free_bounds = [bounds_list[i] for i in free_indices]
+    projected_constraints = _project_constraints(constraints, {fix_idx: test_val}, free_indices)
 
     if likelihood_type == "unbinned":
         len_obs = len(data)
@@ -206,19 +352,24 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model
         p = np.zeros(n_params)
         p[fix_idx] = test_val
         return cost(np.array([])), p
-        
-    res = optimize.minimize(cost, x0=x0, bounds=free_bounds, method='L-BFGS-B')
-    
+
+    method = _resolve_scipy_method(projected_constraints, scipy_method)
+    minimize_kwargs = {"bounds": free_bounds, "method": method}
+    if projected_constraints:
+        minimize_kwargs["constraints"] = projected_constraints
+
+    res = optimize.minimize(cost, x0=x0, **minimize_kwargs)
+
     best_p = np.zeros(n_params)
     best_p[fix_idx] = test_val
     for idx, free_val in zip(free_indices, res.x):
         best_p[idx] = free_val
-        
+
     return res.fun, best_p
 
 def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, seed=None,
                              likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
-                             bounds_func=None):
+                             bounds_func=None, constraints=None, scipy_method=None):
     """
     Performs a conditional maximum likelihood fit (profiling 2 parameters) using SciPy.
     
@@ -251,6 +402,15 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_m
         and must return one `(lo, hi)` tuple per entry of `free_indices`, in
         that order. If None (default), each free parameter uses its static
         `bounds_list[i]` unmodified -- identical to pre-FIX-2 behavior.
+    constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
+        Joint constraints among the FULL n_params vector, projected down to
+        the free-parameter subspace (substituting `test_vA`/`test_vB` as a
+        constant offset) before being passed to SciPy. When non-empty,
+        `method` defaults to 'SLSQP' instead of 'L-BFGS-B'. When None/empty
+        (default), behavior and method are UNCHANGED from before this
+        parameter existed.
+    scipy_method : str, optional
+        Explicit override for the `scipy.optimize.minimize` method.
 
     Returns:
     --------
@@ -264,6 +424,7 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_m
         free_bounds = bounds_func({fix_A: test_vA, fix_B: test_vB}, free_indices, bounds_list)
     else:
         free_bounds = [bounds_list[i] for i in free_indices]
+    projected_constraints = _project_constraints(constraints, {fix_A: test_vA, fix_B: test_vB}, free_indices)
 
     if likelihood_type == "unbinned":
         len_obs = len(data)
@@ -300,22 +461,27 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_m
         p[fix_A] = test_vA
         p[fix_B] = test_vB
         return cost(np.array([])), p
-        
-    res = optimize.minimize(cost, x0=x0, bounds=free_bounds, method='L-BFGS-B')
-    
+
+    method = _resolve_scipy_method(projected_constraints, scipy_method)
+    minimize_kwargs = {"bounds": free_bounds, "method": method}
+    if projected_constraints:
+        minimize_kwargs["constraints"] = projected_constraints
+
+    res = optimize.minimize(cost, x0=x0, **minimize_kwargs)
+
     best_p = np.zeros(n_params)
     best_p[fix_A] = test_vA
     best_p[fix_B] = test_vB
     for idx, free_val in zip(free_indices, res.x):
         best_p[idx] = free_val
-        
+
     return res.fun, best_p
 
 
 # --- 2. UltraNest Optimizers ---
 def unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, compute_rates_func, verbose=1,
                                 likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
-                                bounds_func=None):
+                                bounds_func=None, constraints=None):
     """
     Performs an unconditional global maximum likelihood fit using UltraNest.
     
@@ -354,6 +520,13 @@ def unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, c
         `fixed_values` dict since nothing is fixed in an unconditional fit --
         and must return one `(lo, hi)` tuple per parameter, in index order.
         If None (default), `bounds_list` is used unmodified.
+    constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
+        Joint constraints among the full n_params vector. Since nested
+        sampling doesn't use gradients, it doesn't suffer the flat-gradient
+        trap that motivates the scipy-side SLSQP/projection machinery: a
+        violated constraint simply makes `log_likelihood` return a very
+        large negative value (-1e10) at that point, no projection needed.
+        If None/empty (default), behavior is unchanged.
 
     Returns:
     --------
@@ -371,13 +544,17 @@ def unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, c
         len_obs = len(data)
         s_probs = S_model(data) if len_obs > 0 else np.array([])
         b_probs = B_model(data) if len_obs > 0 else np.array([])
-        
-        def log_likelihood(p): 
+
+        def log_likelihood(p):
+            if not _constraints_satisfied(constraints, p):
+                return -1e10
             return -calc_nll_unbinned(p, len_obs, s_probs, b_probs, compute_rates_func)
     else:
-        def log_likelihood(p): 
+        def log_likelihood(p):
+            if not _constraints_satisfied(constraints, p):
+                return -1e10
             return -calc_nll(p, data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
-            
+
     param_names = [f'p{i+1}' for i in range(n_params)]
     sampler = ultranest.ReactiveNestedSampler(param_names, log_likelihood, prior_transform, log_dir=None)
     run_kwargs = {'min_num_live_points': 50, 'dKL': np.inf, 'min_ess': 50, 'show_status': (verbose == 2), 'viz_callback': False}
@@ -386,7 +563,7 @@ def unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, c
 
 def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=1,
                                  likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
-                                 bounds_func=None):
+                                 bounds_func=None, constraints=None):
     """
     Performs a conditional maximum likelihood fit (profiling 1 parameter) using UltraNest.
     
@@ -420,6 +597,12 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, S_model, B_m
         return one `(lo, hi)` tuple per entry of `free_indices`, in that
         order. If None (default), each free parameter uses its static
         `bounds_list[i]` unmodified -- identical to pre-FIX-2 behavior.
+    constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
+        Joint constraints among the full n_params vector, evaluated directly
+        on the fully-assembled parameter point (no projection needed --
+        nested sampling doesn't use gradients, so a violated constraint
+        simply makes `log_likelihood` return -1e10 at that point). If
+        None/empty (default), behavior is unchanged.
 
     Returns:
     --------
@@ -457,6 +640,8 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, S_model, B_m
             p[fix_idx] = test_val
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
+            if not _constraints_satisfied(constraints, p):
+                return -1e10
             return -calc_nll_unbinned(p, len_obs, s_probs, b_probs, compute_rates_func)
     else:
         def log_likelihood(free_p):
@@ -464,6 +649,8 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, S_model, B_m
             p[fix_idx] = test_val
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
+            if not _constraints_satisfied(constraints, p):
+                return -1e10
             return -calc_nll(p, data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
 
     param_names = [f'f{i+1}' for i in range(len(free_bounds))]
@@ -480,7 +667,7 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, S_model, B_m
 
 def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=1,
                                  likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
-                                 bounds_func=None):
+                                 bounds_func=None, constraints=None):
     """
     Performs a conditional maximum likelihood fit (profiling 2 parameters) using UltraNest.
     
@@ -512,6 +699,10 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
         and must return one `(lo, hi)` tuple per entry of `free_indices`, in
         that order. If None (default), each free parameter uses its static
         `bounds_list[i]` unmodified -- identical to pre-FIX-2 behavior.
+    constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
+        Joint constraints among the full n_params vector, evaluated directly
+        on the fully-assembled parameter point (no projection needed). If
+        None/empty (default), behavior is unchanged.
 
     Returns:
     --------
@@ -539,18 +730,20 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
 
     def prior_transform(cube):
         return np.array([cube[i] * (free_bounds[i][1] - free_bounds[i][0]) + free_bounds[i][0] for i in range(len(free_bounds))])
-        
+
     if likelihood_type == "unbinned":
         len_obs = len(data)
         s_probs = S_model(data) if len_obs > 0 else np.array([])
         b_probs = B_model(data) if len_obs > 0 else np.array([])
-        
+
         def log_likelihood(free_p):
             p = np.zeros(n_params)
             p[fix_A] = test_vA
             p[fix_B] = test_vB
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
+            if not _constraints_satisfied(constraints, p):
+                return -1e10
             return -calc_nll_unbinned(p, len_obs, s_probs, b_probs, compute_rates_func)
     else:
         def log_likelihood(free_p):
@@ -559,8 +752,10 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
             p[fix_B] = test_vB
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
+            if not _constraints_satisfied(constraints, p):
+                return -1e10
             return -calc_nll(p, data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
-            
+
     param_names = [f'f{i+1}' for i in range(len(free_bounds))]
     sampler = ultranest.ReactiveNestedSampler(param_names, log_likelihood, prior_transform, log_dir=None)
     run_kwargs = {'min_num_live_points': 50, 'dKL': np.inf, 'min_ess': 50, 'show_status': (verbose == 2), 'viz_callback': False}

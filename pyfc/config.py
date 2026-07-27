@@ -65,7 +65,8 @@ def generate_sample_config(filename="../config/example_fc_config.json"):
         "compute_2D_intervals": True,
         "param_names": ["param1", "param2", "param3"],
         "smooth_1d": True,
-        "smooth_2d": True
+        "smooth_2d": True,
+        "scipy_method": None
     }
     with open(filename, 'w') as f:
         json.dump(default_config, f, indent=4)
@@ -109,6 +110,7 @@ def parse_arguments():
     parser.add_argument('--cl', type=float, nargs='+', help="Confidence level(s) (e.g., 0.90 0.95)", default=argparse.SUPPRESS)
     parser.add_argument('--n_toys', type=int, default=argparse.SUPPRESS)
     parser.add_argument('--strategy', type=str, choices=["grid", "scipy", "ultranest", "hybrid"], default=argparse.SUPPRESS)
+    parser.add_argument('--scipy_method', type=str, choices=["L-BFGS-B", "SLSQP", "trust-constr"], help="Override scipy.optimize.minimize's method (default: L-BFGS-B, or SLSQP automatically when constraints are supplied programmatically)", default=argparse.SUPPRESS)
     parser.add_argument('--num_cores', type=int, default=argparse.SUPPRESS)
     parser.add_argument('--verbose', type=int, default=argparse.SUPPRESS)
     parser.add_argument('--adaptive_toys', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
@@ -151,7 +153,8 @@ def parse_arguments():
         "compute_2D_intervals": True,
         "param_names": ["param1", "param2", "param3"],
         "smooth_1d": True,
-        "smooth_2d": True
+        "smooth_2d": True,
+        "scipy_method": None
     }
     
     if hasattr(args, 'config_file'):

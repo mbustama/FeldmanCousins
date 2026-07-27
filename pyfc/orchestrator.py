@@ -245,7 +245,8 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                          output_file=None, save_log=False, save_directory="fc_output",
                          use_finite_mc_correction_binned=True, S_sigma2=None, B_sigma2=None,
                          compute_1D_intervals=True, compute_2D_intervals=True, param_names=None,
-                         smooth_1d=False, smooth_2d=False, bounds_func=None):
+                         smooth_1d=False, smooth_2d=False, bounds_func=None,
+                         constraints=None, scipy_method=None):
     """
     Main execution pipeline for the Feldman-Cousins unified approach.
     
@@ -323,6 +324,22 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
         parameter and a free nuisance parameter -- it cannot express a
         constraint between two parameters that are BOTH free at the same
         time (use `constraints` for that instead).
+    constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
+        Joint constraints among the FULL n_params vector, for expressing
+        constraints between multiple simultaneously-free nuisance parameters
+        (which `bounds_func` cannot express). Forwarded to whichever scipy/
+        ultranest optimizer is active; ignored for strategy="grid". For the
+        scipy path, `method` switches from 'L-BFGS-B' to 'SLSQP' whenever
+        constraints are non-empty (required, since L-BFGS-B doesn't support
+        `constraints`); for the ultranest path, a violated constraint simply
+        yields a very large negative log-likelihood at that point. When
+        None/empty (default), behavior and method are UNCHANGED from before
+        this parameter existed. See the `optimizers.py` module docstring and
+        the README section "Handling joint/simplex-constrained parameters".
+    scipy_method : str, optional
+        Explicit override for the `scipy.optimize.minimize` method (e.g.
+        'trust-constr' for better-conditioned but slower constrained fits).
+        Takes precedence over the constraints-based default.
 
     Returns:
     --------
@@ -461,9 +478,9 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
             else:
                 data_uncond_nll, best_params = unconditional_fit_grid_unbinned(data, S_model, B_model, full_grid_points, compute_rates_func)
         elif strategy in ["ultranest", "hybrid"]:
-            data_uncond_nll, best_params = unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, compute_rates_func, verbose, likelihood_type, S_sigma2, B_sigma2, use_finite_mc_correction_binned, bounds_func=bounds_func)
+            data_uncond_nll, best_params = unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, compute_rates_func, verbose, likelihood_type, S_sigma2, B_sigma2, use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
         elif strategy == "scipy":
-            data_uncond_nll, best_params = unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func)
+            data_uncond_nll, best_params = unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
         
         results["best_fit"] = best_params
         results["data_uncond_nll"] = data_uncond_nll
@@ -503,9 +520,9 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                     else:
                         cond_nll, prof_p = conditional_fit_grid_unbinned_1d(pt, p_idx, n_params, data, S_model, B_model, cond_grid_points, compute_rates_func)
                 elif strategy in ["ultranest", "hybrid"]:
-                    cond_nll, prof_p = conditional_fit_1d_ultranest(pt, p_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose, likelihood_type, S_sigma2, B_sigma2, use_finite_mc_correction_binned, bounds_func=bounds_func)
+                    cond_nll, prof_p = conditional_fit_1d_ultranest(pt, p_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose, likelihood_type, S_sigma2, B_sigma2, use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
                 elif strategy == "scipy":
-                    cond_nll, prof_p = conditional_fit_1d_scipy(pt, p_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func)
+                    cond_nll, prof_p = conditional_fit_1d_scipy(pt, p_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
                 
                 prof_params_arr[i] = prof_p
                 # Evaluate the actual PLR data statistic (bounded at 0 to fix numerical floating point noise)
@@ -524,7 +541,7 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                     else:
                         t_stats = generate_and_fit_toys_grid_unbinned_1d(pt, p_idx, true_params, n_params, S_model, B_model, full_grid_points, cond_grid_points, n_toys, S_mc_pool, B_mc_pool, compute_rates_func, generate_toy_func)
                 else:
-                    t_stats = generate_and_fit_toys_python(true_params, n_params, "1d", p_idx, None, None, pt, None, S_model, B_model, bounds_list, n_toys, strategy, num_cores, 0, likelihood_type, S_mc_pool, B_mc_pool, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func, generate_toy_func, bounds_func=bounds_func)
+                    t_stats = generate_and_fit_toys_python(true_params, n_params, "1d", p_idx, None, None, pt, None, S_model, B_model, bounds_list, n_toys, strategy, num_cores, 0, likelihood_type, S_mc_pool, B_mc_pool, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func, generate_toy_func, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
                 
                 t_stats.sort()
                 for c in cl: 
@@ -568,9 +585,9 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                         else: 
                             cond_nll, prof_p = conditional_fit_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, cond_grid_points, compute_rates_func)
                     elif strategy in ["ultranest", "hybrid"]:
-                        cond_nll, prof_p = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func)
+                        cond_nll, prof_p = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
                     elif strategy == "scipy":
-                        cond_nll, prof_p = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func)
+                        cond_nll, prof_p = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
 
                     results[f"2d_t_data_{pair_name}"][i, j] = max(0.0, cond_nll - data_uncond_nll)
                     true_params = prof_p
@@ -582,9 +599,9 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                         else:
                             _, true_params = conditional_fit_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, cond_grid_points, compute_rates_func)
                     elif strategy in ["ultranest", "hybrid"]:
-                        _, true_params = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func)
+                        _, true_params = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
                     elif strategy == "scipy":
-                        _, true_params = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func)
+                        _, true_params = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
                 
                 # Step 2. Sequential Toy Assessment to get critical threshold for coverage
                 if strategy == "grid":
@@ -593,7 +610,7 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                     else: 
                         t_stats = generate_and_fit_toys_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, true_params, n_params, S_model, B_model, full_grid_points, cond_grid_points, n_toys, S_mc_pool, B_mc_pool, compute_rates_func, generate_toy_func)
                 else:
-                    t_stats = generate_and_fit_toys_python(true_params, n_params, "2d", None, fix_A, fix_B, p_A, p_B, S_model, B_model, bounds_list, n_toys, strategy, num_cores, 0, likelihood_type, S_mc_pool, B_mc_pool, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func, generate_toy_func, bounds_func=bounds_func)
+                    t_stats = generate_and_fit_toys_python(true_params, n_params, "2d", None, fix_A, fix_B, p_A, p_B, S_model, B_model, bounds_list, n_toys, strategy, num_cores, 0, likelihood_type, S_mc_pool, B_mc_pool, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func, generate_toy_func, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
                 
                 t_stats.sort()
                 for c in cl: 
@@ -771,7 +788,8 @@ if __name__ == "__main__":
             compute_2D_intervals=config["compute_2D_intervals"],
             param_names=config["param_names"],
             smooth_1d=config["smooth_1d"],
-            smooth_2d=config["smooth_2d"]
+            smooth_2d=config["smooth_2d"],
+            scipy_method=config.get("scipy_method")
         )
 
     elif config["likelihood_type"] == "unbinned":
@@ -869,5 +887,6 @@ if __name__ == "__main__":
             compute_2D_intervals=config["compute_2D_intervals"],
             param_names=config["param_names"],
             smooth_1d=config["smooth_1d"],
-            smooth_2d=config["smooth_2d"]
+            smooth_2d=config["smooth_2d"],
+            scipy_method=config.get("scipy_method")
         )

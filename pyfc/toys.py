@@ -51,7 +51,7 @@ def _worker_unbinned_toy(args):
         A packed tuple containing all necessary arguments:
         (toy_index, true_params, n_params, fit_mode, fix_idx, fix_A, fix_B,
          t_vA, t_vB, S_model, B_model, bounds_list, S_mc_pool, B_mc_pool, strategy,
-         compute_rates_func, generate_toy_func, bounds_func)
+         compute_rates_func, generate_toy_func, bounds_func, constraints, scipy_method)
 
     Returns:
     --------
@@ -61,7 +61,7 @@ def _worker_unbinned_toy(args):
     # Unpack the monolithic argument tuple required for multiprocessing
     (t, true_params, n_params, fit_mode, fix_idx, fix_A, fix_B, t_vA, t_vB,
      S_model, B_model, bounds_list, S_mc_pool, B_mc_pool, strategy,
-     compute_rates_func, generate_toy_func, bounds_func) = args
+     compute_rates_func, generate_toy_func, bounds_func, constraints, scipy_method) = args
 
     # Generate the simulated unbinned dataset by bootstrapping from the MC pools
     toy_data = generate_toy_func(true_params, S_mc_pool, B_mc_pool)
@@ -72,22 +72,22 @@ def _worker_unbinned_toy(args):
         seed_p = true_params.copy()
 
         # 1. Unconditional fit (Denominator of the PLR)
-        uncond_nll, _ = unconditional_fit_scipy(toy_data, S_model, B_model, n_params, bounds_list, compute_rates_func, seed=seed_p, likelihood_type="unbinned", bounds_func=bounds_func)
+        uncond_nll, _ = unconditional_fit_scipy(toy_data, S_model, B_model, n_params, bounds_list, compute_rates_func, seed=seed_p, likelihood_type="unbinned", bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
 
         # 2. Conditional fit (Numerator of the PLR)
         if fit_mode == "1d":
             seed_free_1d = [true_params[i] for i in range(n_params) if i != fix_idx] if len(true_params) > 1 else None
-            cond_nll, _ = conditional_fit_1d_scipy(t_vA, fix_idx, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, seed=seed_free_1d, likelihood_type="unbinned", bounds_func=bounds_func)
+            cond_nll, _ = conditional_fit_1d_scipy(t_vA, fix_idx, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, seed=seed_free_1d, likelihood_type="unbinned", bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
         elif fit_mode == "2d":
             seed_free_2d = [true_params[i] for i in range(n_params) if i not in (fix_A, fix_B)] if len(true_params) > 2 else None
-            cond_nll, _ = conditional_fit_2d_scipy(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, seed=seed_free_2d, likelihood_type="unbinned", bounds_func=bounds_func)
+            cond_nll, _ = conditional_fit_2d_scipy(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, seed=seed_free_2d, likelihood_type="unbinned", bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
 
     elif strategy == "ultranest":
-        uncond_nll, _ = unconditional_fit_ultranest(toy_data, S_model, B_model, n_params, bounds_list, compute_rates_func, verbose=0, likelihood_type="unbinned", bounds_func=bounds_func)
+        uncond_nll, _ = unconditional_fit_ultranest(toy_data, S_model, B_model, n_params, bounds_list, compute_rates_func, verbose=0, likelihood_type="unbinned", bounds_func=bounds_func, constraints=constraints)
         if fit_mode == "1d":
-            cond_nll, _ = conditional_fit_1d_ultranest(t_vA, fix_idx, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type="unbinned", bounds_func=bounds_func)
+            cond_nll, _ = conditional_fit_1d_ultranest(t_vA, fix_idx, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type="unbinned", bounds_func=bounds_func, constraints=constraints)
         elif fit_mode == "2d":
-            cond_nll, _ = conditional_fit_2d_ultranest(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type="unbinned", bounds_func=bounds_func)
+            cond_nll, _ = conditional_fit_2d_ultranest(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type="unbinned", bounds_func=bounds_func, constraints=constraints)
 
     return max(0.0, cond_nll - uncond_nll)
 
@@ -96,7 +96,8 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
                                  S_model, B_model, bounds_list, n_toys, strategy, num_cores=None, verbose=1,
                                  likelihood_type="binned", S_mc_pool=None, B_mc_pool=None,
                                  S_sigma2=None, B_sigma2=None, use_finite_mc=False,
-                                 compute_rates_func=None, generate_toy_func=None, bounds_func=None):
+                                 compute_rates_func=None, generate_toy_func=None, bounds_func=None,
+                                 constraints=None, scipy_method=None):
     """
     Handles threaded generation and fitting of MC toys for 1D profiling and 2D contours.
     
@@ -154,6 +155,13 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
         unchanged to the underlying `*_scipy`/`*_ultranest` fit calls (see
         `optimizers.py` module docstring). If None (default), behavior is
         unchanged from before this parameter existed.
+    constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
+        Joint constraints, forwarded unchanged to the underlying
+        `*_scipy`/`*_ultranest` fit calls. If None/empty (default), behavior
+        is unchanged.
+    scipy_method : str, optional
+        Explicit `scipy.optimize.minimize` method override, forwarded to the
+        scipy fit calls.
 
     Returns:
     --------
@@ -164,7 +172,7 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
     if likelihood_type == "unbinned":
         args_list = [(t, true_params, n_params, fit_mode, fix_idx, fix_A, fix_B, t_vA, t_vB,
                       S_model, B_model, bounds_list, S_mc_pool, B_mc_pool, strategy,
-                      compute_rates_func, generate_toy_func, bounds_func) for t in range(n_toys)]
+                      compute_rates_func, generate_toy_func, bounds_func, constraints, scipy_method) for t in range(n_toys)]
         try:
             with concurrent.futures.ProcessPoolExecutor(max_workers=num_cores) as executor:
                 t_stats = list(executor.map(_worker_unbinned_toy, args_list))
@@ -185,22 +193,22 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
         
         if strategy == "scipy" or strategy == "hybrid":
             seed_p = true_params.copy()
-            uncond_nll, _ = unconditional_fit_scipy(toy_data, S_model, B_model, n_params, bounds_list, compute_rates_func, seed=seed_p, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func)
+            uncond_nll, _ = unconditional_fit_scipy(toy_data, S_model, B_model, n_params, bounds_list, compute_rates_func, seed=seed_p, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
 
             if fit_mode == "1d":
                 seed_free_1d = [true_params[i] for i in range(n_params) if i != fix_idx] if len(true_params) > 1 else None
-                cond_nll, _ = conditional_fit_1d_scipy(t_vA, fix_idx, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, seed=seed_free_1d, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func)
+                cond_nll, _ = conditional_fit_1d_scipy(t_vA, fix_idx, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, seed=seed_free_1d, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
             elif fit_mode == "2d":
                 seed_free_2d = [true_params[i] for i in range(n_params) if i not in (fix_A, fix_B)] if len(true_params) > 2 else None
-                cond_nll, _ = conditional_fit_2d_scipy(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, seed=seed_free_2d, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func)
+                cond_nll, _ = conditional_fit_2d_scipy(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, seed=seed_free_2d, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
 
         elif strategy == "ultranest":
-            uncond_nll, _ = unconditional_fit_ultranest(toy_data, S_model, B_model, n_params, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func)
+            uncond_nll, _ = unconditional_fit_ultranest(toy_data, S_model, B_model, n_params, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints)
 
             if fit_mode == "1d":
-                cond_nll, _ = conditional_fit_1d_ultranest(t_vA, fix_idx, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func)
+                cond_nll, _ = conditional_fit_1d_ultranest(t_vA, fix_idx, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints)
             elif fit_mode == "2d":
-                cond_nll, _ = conditional_fit_2d_ultranest(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func)
+                cond_nll, _ = conditional_fit_2d_ultranest(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints)
 
         return max(0.0, cond_nll - uncond_nll)
 
