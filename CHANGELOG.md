@@ -156,6 +156,24 @@ data.
   for its inline code snippets -- silently wrote output somewhere
   different from what the docs describe. Unified all three to
   `"output/example_fc_output"`.
+- **`strategy="ultranest"`/`"hybrid"` (2D intervals) crashed with
+  `IndexError: too many indices for array: array is 1-dimensional, but 2
+  were indexed`**, raised inside `ultranest.ReactiveNestedSampler`'s own
+  internal `_find_strategy` method (confirmed present through at least
+  UltraNest v4.5.0 and the current GitHub master, so this is not fixed by
+  upgrading). An internal random subsample can occasionally select too
+  few saved iterations, producing a degenerate 1D array where UltraNest's
+  own code expects 2D. Since this stems from UltraNest's own internal
+  exploration randomness rather than anything about the model being
+  fitted, `optimizers.py`'s three `*_ultranest` fit functions now retry
+  with a fresh sampler instance on this specific error (new
+  `_run_ultranest_with_retry` helper, mirroring `_minimize_with_restarts`'s
+  existing retry-on-failure pattern for the scipy path; covered by new
+  tests in `tests/test_ultranest_retry.py`). Separately,
+  `pyfc_strategy_comparison_tutorial.ipynb`'s grid/`n_toys` were scaled
+  down, since its original size didn't finish even in 30 minutes with
+  `ultranest` actually installed -- as far as could be determined, this
+  strategy combination had never been exercised end-to-end before.
 
 ### Added
 
