@@ -21,7 +21,7 @@ from pyfc.unbinned import calc_nll_unbinned
 
 
 # --- Binned: pre-fix reference formula (for the physical branch only) ---
-def _old_binned_nll_physical(mu, N_obs, S_sigma2_arr, B_sigma2_arr, use_finite_mc):
+def _old_binned_nll_physical(mu, N_obs, S_sumw2_arr, B_sumw2_arr, use_finite_mc):
     """Reimplementation of the pre-fix physical-branch formula for cross-checking."""
     nll = 0.0
     for i in range(len(N_obs)):
@@ -29,7 +29,7 @@ def _old_binned_nll_physical(mu, N_obs, S_sigma2_arr, B_sigma2_arr, use_finite_m
         n_obs = float(N_obs[i])
         assert mu_i > 0, "This reference helper only covers the physical branch"
         if use_finite_mc:
-            sigma2 = S_sigma2_arr[i]
+            sigma2 = S_sumw2_arr[i]
             if sigma2 > 1e-10:
                 alpha = (mu_i**2) / sigma2 + 1.0
                 beta = max(mu_i / sigma2, 1e-300)
@@ -50,7 +50,7 @@ def _old_binned_nll_physical(mu, N_obs, S_sigma2_arr, B_sigma2_arr, use_finite_m
 
 
 @njit(fastmath=True, nogil=True)
-def _linear_rate_func(params, S_sigma2, B_sigma2):
+def _linear_rate_func(params, S_sumw2, B_sumw2):
     """mu = params[0] (single bin), used to sweep a rate through mu=0."""
     mu = np.array([params[0]])
     sigma2 = np.array([0.0])
@@ -61,8 +61,8 @@ def test_binned_calc_nll_identical_for_physical_bins():
     """For mu_i > 0 in all bins, output must match the pre-fix formula exactly."""
     N_obs = np.array([3.0, 0.0, 7.0])
     S_template = np.array([1.0, 1.0, 1.0])
-    S_sigma2 = np.zeros_like(S_template)
-    B_sigma2 = np.zeros_like(S_template)
+    S_sumw2 = np.zeros_like(S_template)
+    B_sumw2 = np.zeros_like(S_template)
 
     @njit(fastmath=True, nogil=True)
     def rate_func(params, S_s2, B_s2):
@@ -71,12 +71,12 @@ def test_binned_calc_nll_identical_for_physical_bins():
 
     for use_finite_mc in (False, True):
         params = np.array([3.0])
-        mu, _ = rate_func(params, S_sigma2, B_sigma2)
+        mu, _ = rate_func(params, S_sumw2, B_sumw2)
         assert np.all(mu > 0)
 
-        got = calc_nll(params, N_obs, S_sigma2, B_sigma2,
+        got = calc_nll(params, N_obs, S_sumw2, B_sumw2,
                         use_finite_mc, rate_func)
-        expected = _old_binned_nll_physical(mu, N_obs, S_sigma2, B_sigma2, use_finite_mc)
+        expected = _old_binned_nll_physical(mu, N_obs, S_sumw2, B_sumw2, use_finite_mc)
         assert got == pytest.approx(expected, rel=1e-12, abs=1e-12)
 
 
@@ -87,14 +87,14 @@ def test_binned_calc_nll_smooth_through_unphysical_region():
     plateau at a constant value.
     """
     N_obs = np.array([5.0])
-    S_sigma2 = np.zeros(1)
-    B_sigma2 = np.zeros(1)
+    S_sumw2 = np.zeros(1)
+    B_sumw2 = np.zeros(1)
 
     xs = np.linspace(0.5, -3.0, 25)  # crosses mu=0 partway through
     nlls = []
     for x in xs:
         params = np.array([x])
-        nll = calc_nll(params, N_obs, S_sigma2, B_sigma2,
+        nll = calc_nll(params, N_obs, S_sumw2, B_sumw2,
                         False, _linear_rate_func)
         nlls.append(nll)
         assert np.isfinite(nll)
@@ -115,8 +115,8 @@ def test_binned_calc_nll_no_early_return_preserves_other_bins():
     accumulated from other (physical) bins -- i.e. no early return.
     """
     N_obs = np.array([5.0, 5.0])
-    S_sigma2 = np.zeros(2)
-    B_sigma2 = np.zeros(2)
+    S_sumw2 = np.zeros(2)
+    B_sumw2 = np.zeros(2)
 
     @njit(fastmath=True, nogil=True)
     def rate_func(params, S_s2, B_s2):
@@ -124,7 +124,7 @@ def test_binned_calc_nll_no_early_return_preserves_other_bins():
         mu = np.array([3.0, -1.0])
         return mu, S_s2
 
-    nll = calc_nll(np.array([0.0]), N_obs, S_sigma2, B_sigma2,
+    nll = calc_nll(np.array([0.0]), N_obs, S_sumw2, B_sumw2,
                     False, rate_func)
     # physical bin-0 contribution alone
     bin0_only = 2.0 * (3.0 - 5.0 + 5.0 * math.log(5.0 / 3.0))

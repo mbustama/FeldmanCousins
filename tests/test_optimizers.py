@@ -31,7 +31,7 @@ def test_scipy_boundary_clamping():
     # production code), not passed in as arguments -- see the
     # S_model/B_model removal in the "BREAKING CHANGES" CHANGELOG entry.
     @njit
-    def dummy_compute(params, S_sigma2, B_sigma2):
+    def dummy_compute(params, S_sumw2, B_sumw2):
         mu = params[0] * dummy_S
         sigma2 = params[0] * dummy_S * 0.1
         return mu, sigma2
@@ -45,8 +45,8 @@ def test_scipy_boundary_clamping():
             compute_rates_func=dummy_compute,
             seed=bad_seed,
             likelihood_type="binned",
-            S_sigma2=dummy_S_sig,
-            B_sigma2=dummy_B_sig,
+            S_sumw2=dummy_S_sig,
+            B_sumw2=dummy_B_sig,
             use_finite_mc=False
         )
         assert True

@@ -147,9 +147,9 @@ _B_TEMPLATE_2P = np.array([1.0])
 
 
 @njit(fastmath=True, nogil=True)
-def _simple_2param_rate_func(params, S_sigma2, B_sigma2):
+def _simple_2param_rate_func(params, S_sumw2, B_sumw2):
     mu = params[0] * _S_TEMPLATE_2P + params[1] * _B_TEMPLATE_2P + 1.0
-    return mu, S_sigma2
+    return mu, S_sumw2
 
 
 def test_orchestrator_neighbor_seeding_passes_previous_point_as_seed():
@@ -185,7 +185,7 @@ def test_orchestrator_neighbor_seeding_passes_previous_point_as_seed():
             compute_rates_func=_simple_2param_rate_func,
             cl=[0.90], n_toys=1, strategy="scipy", num_cores=1, verbose=0,
             sparsify_grid=False, warm_start=False,
-            likelihood_type="binned", S_sigma2=s2, B_sigma2=s2,
+            likelihood_type="binned", S_sumw2=s2, B_sumw2=s2,
             output_file=None, save_directory="/tmp/pyfc_test_neighbor_seed_1d",
             compute_1D_intervals=True, compute_2D_intervals=False,
         )
@@ -219,8 +219,8 @@ def test_orchestrator_neighbor_seeding_disabled_via_flag():
     grids = [np.linspace(0.0, 1.0, 4)]
 
     @njit(fastmath=True, nogil=True)
-    def rate_func_1p(params, S_sigma2, B_sigma2):
-        return params[0] * S_template + 1.0, S_sigma2
+    def rate_func_1p(params, S_sumw2, B_sumw2):
+        return params[0] * S_template + 1.0, S_sumw2
 
     with patch("pyfc.orchestrator.conditional_fit_1d_scipy", side_effect=fake_conditional_fit_1d_scipy), \
          patch("pyfc.orchestrator.unconditional_fit_scipy", side_effect=fake_unconditional_fit_scipy):
@@ -229,7 +229,7 @@ def test_orchestrator_neighbor_seeding_disabled_via_flag():
             compute_rates_func=rate_func_1p,
             cl=[0.90], n_toys=1, strategy="scipy", num_cores=1, verbose=0,
             sparsify_grid=False, warm_start=False,
-            likelihood_type="binned", S_sigma2=s2, B_sigma2=s2,
+            likelihood_type="binned", S_sumw2=s2, B_sumw2=s2,
             output_file=None, save_directory="/tmp/pyfc_test_neighbor_seed_disabled",
             compute_1D_intervals=True, compute_2D_intervals=False,
             neighbor_seeding=False,
@@ -264,7 +264,7 @@ def test_end_to_end_with_and_without_neighbor_seeding_no_plateau_or_regression()
             compute_rates_func=rate_func,
             cl=[0.90], n_toys=10, strategy="scipy", num_cores=1, verbose=0,
             sparsify_grid=False, warm_start=False,
-            likelihood_type="binned", S_sigma2=s2_S, B_sigma2=s2_B,
+            likelihood_type="binned", S_sumw2=s2_S, B_sumw2=s2_B,
             output_file=None, save_directory=f"/tmp/pyfc_test_e2e_{neighbor_seeding}",
             compute_1D_intervals=True, compute_2D_intervals=False,
             neighbor_seeding=neighbor_seeding,

@@ -96,7 +96,7 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
                                  bounds_list, n_toys, strategy, num_cores=None, verbose=1,
                                  pdf_components=None,
                                  likelihood_type="binned", S_mc_pool=None, B_mc_pool=None,
-                                 S_sigma2=None, B_sigma2=None, use_finite_mc=False,
+                                 S_sumw2=None, B_sumw2=None, use_finite_mc=False,
                                  compute_rates_func=None, generate_toy_func=None, bounds_func=None,
                                  constraints=None, scipy_method=None):
     """
@@ -146,8 +146,8 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
         "binned" or "unbinned".
     S_mc_pool, B_mc_pool : array_like, optional
         Source pools for bootstrapping unbinned events.
-    S_sigma2, B_sigma2 : array_like, optional
-        Template variances for finite MC corrections.
+    S_sumw2, B_sumw2 : array_like, optional
+        Sum of squared MC weights (sumw2) per bin, for finite MC corrections.
     use_finite_mc : bool
         Toggle for Poisson-Gamma mixture likelihoods.
     compute_rates_func : callable
@@ -186,7 +186,7 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
 
     # --- Branch 2: Binned Data (Thread-based parallelism) or Unbinned Fallback ---
     if likelihood_type == "binned":
-        mu_true, _ = compute_rates_func(true_params, S_sigma2, B_sigma2)
+        mu_true, _ = compute_rates_func(true_params, S_sumw2, B_sumw2)
         toys_binned_data = np.random.poisson(mu_true, size=(n_toys,) + mu_true.shape)
 
     def fit_single_toy(t):
@@ -197,22 +197,22 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
 
         if strategy == "scipy" or strategy == "hybrid":
             seed_p = true_params.copy()
-            uncond_nll, _ = unconditional_fit_scipy(toy_data, n_params, bounds_list, compute_rates_func, seed=seed_p, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
+            uncond_nll, _ = unconditional_fit_scipy(toy_data, n_params, bounds_list, compute_rates_func, seed=seed_p, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
 
             if fit_mode == "1d":
                 seed_free_1d = [true_params[i] for i in range(n_params) if i != fix_idx] if len(true_params) > 1 else None
-                cond_nll, _ = conditional_fit_1d_scipy(t_vA, fix_idx, n_params, toy_data, bounds_list, compute_rates_func, seed=seed_free_1d, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
+                cond_nll, _ = conditional_fit_1d_scipy(t_vA, fix_idx, n_params, toy_data, bounds_list, compute_rates_func, seed=seed_free_1d, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
             elif fit_mode == "2d":
                 seed_free_2d = [true_params[i] for i in range(n_params) if i not in (fix_A, fix_B)] if len(true_params) > 2 else None
-                cond_nll, _ = conditional_fit_2d_scipy(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, bounds_list, compute_rates_func, seed=seed_free_2d, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
+                cond_nll, _ = conditional_fit_2d_scipy(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, bounds_list, compute_rates_func, seed=seed_free_2d, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
 
         elif strategy == "ultranest":
-            uncond_nll, _ = unconditional_fit_ultranest(toy_data, n_params, bounds_list, compute_rates_func, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints)
+            uncond_nll, _ = unconditional_fit_ultranest(toy_data, n_params, bounds_list, compute_rates_func, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints)
 
             if fit_mode == "1d":
-                cond_nll, _ = conditional_fit_1d_ultranest(t_vA, fix_idx, n_params, toy_data, bounds_list, compute_rates_func, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints)
+                cond_nll, _ = conditional_fit_1d_ultranest(t_vA, fix_idx, n_params, toy_data, bounds_list, compute_rates_func, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints)
             elif fit_mode == "2d":
-                cond_nll, _ = conditional_fit_2d_ultranest(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, bounds_list, compute_rates_func, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints)
+                cond_nll, _ = conditional_fit_2d_ultranest(t_vA, t_vB, fix_A, fix_B, n_params, toy_data, bounds_list, compute_rates_func, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc, bounds_func=bounds_func, constraints=constraints)
 
         return max(0.0, cond_nll - uncond_nll)
 

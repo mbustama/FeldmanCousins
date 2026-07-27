@@ -39,7 +39,7 @@ except ImportError:
 
 # --- 2. Core Math (Binned) ---
 @njit(fastmath=True, nogil=True)
-def calc_nll(params, N_obs, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func):
+def calc_nll(params, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func):
     """
     [BINNED] Computes the negative log-likelihood for arbitrary N parameters.
 
@@ -72,14 +72,16 @@ def calc_nll(params, N_obs, S_sigma2, B_sigma2, use_finite_mc, compute_rates_fun
         arbitrary N-dimensional histogram (e.g. shape (E_bins, cos_theta_bins));
         it is flattened internally, so the NLL is a sum over all bins
         regardless of how they are laid out spatially.
-    S_sigma2 : array_like, same shape as N_obs
-        Variance of the signal template per bin.
-    B_sigma2 : array_like, same shape as N_obs
-        Variance of the background template per bin.
+    S_sumw2 : array_like, same shape as N_obs
+        Sum of squared MC weights (sum(w_i^2)) per bin for the signal
+        template -- the standard per-bin variance estimator for a weighted
+        MC sample (unweighted MC is the w_i=1 special case).
+    B_sumw2 : array_like, same shape as N_obs
+        Sum of squared MC weights per bin for the background template.
     use_finite_mc : bool
         If True, applies the Poisson-Gamma mixture likelihood. If False, uses standard Poisson.
     compute_rates_func : callable
-        User-provided mapping function `(params, S_sigma2, B_sigma2) -> (mu, sigma2)`
+        User-provided mapping function `(params, S_sumw2, B_sumw2) -> (mu, sigma2)`
         that calculates bin expectations (mu) and variances (sigma2), of the same
         shape as N_obs. Any fixed template arrays it needs (signal/background
         shapes) should be referenced via closure or module-global rather than
@@ -111,7 +113,7 @@ def calc_nll(params, N_obs, S_sigma2, B_sigma2, use_finite_mc, compute_rates_fun
     mu_i > 0, behavior is byte-for-byte identical to before this change.
     """
     nll = 0.0
-    mu, sigma2_arr = compute_rates_func(params, S_sigma2, B_sigma2)
+    mu, sigma2_arr = compute_rates_func(params, S_sumw2, B_sumw2)
 
     mu_flat = mu.reshape(-1)
     N_obs_flat = N_obs.reshape(-1)
@@ -162,7 +164,7 @@ def calc_nll(params, N_obs, S_sigma2, B_sigma2, use_finite_mc, compute_rates_fun
 
 # --- 3. Grid Search Optimizers (Binned) ---
 @njit(fastmath=True, nogil=True)
-def unconditional_fit_grid(N_obs, full_grid_points, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func):
+def unconditional_fit_grid(N_obs, full_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func):
     """
     Performs an unconditional maximum likelihood fit via exhaustive grid search.
 
@@ -180,8 +182,8 @@ def unconditional_fit_grid(N_obs, full_grid_points, S_sigma2, B_sigma2, use_fini
     full_grid_points : array_like, 2D
         A pre-computed matrix where each row represents a complete N-dimensional
         parameter combination to evaluate.
-    S_sigma2, B_sigma2 : array_like, same shape as N_obs
-        Template variances.
+    S_sumw2, B_sumw2 : array_like, same shape as N_obs
+        Sum of squared MC weights (sumw2) per bin, for signal and background respectively.
     use_finite_mc : bool
         Flag to use finite MC likelihood formulation.
     compute_rates_func : callable
@@ -199,7 +201,7 @@ def unconditional_fit_grid(N_obs, full_grid_points, S_sigma2, B_sigma2, use_fini
 
     for row in range(len(full_grid_points)):
         p = full_grid_points[row]
-        nll = calc_nll(p, N_obs, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
+        nll = calc_nll(p, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
         if nll < min_nll:
             min_nll = nll
             best_params = p.copy()
@@ -207,7 +209,7 @@ def unconditional_fit_grid(N_obs, full_grid_points, S_sigma2, B_sigma2, use_fini
     return min_nll, best_params
 
 @njit(fastmath=True, nogil=True)
-def conditional_fit_grid_1d(test_val, fix_idx, n_params, N_obs, cond_grid_points, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func):
+def conditional_fit_grid_1d(test_val, fix_idx, n_params, N_obs, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func):
     """
     Performs a conditional maximum likelihood fit with one parameter fixed (Profiling).
 
@@ -227,7 +229,7 @@ def conditional_fit_grid_1d(test_val, fix_idx, n_params, N_obs, cond_grid_points
         The index of the parameter to fix.
     n_params : int
         Total number of parameters in the model.
-    N_obs, S_sigma2, B_sigma2 : array_like, any shape (all matching)
+    N_obs, S_sumw2, B_sumw2 : array_like, any shape (all matching)
         Data counts and variances.
     cond_grid_points : array_like, 2D
         Pre-computed grid of the (N-1) free nuisance parameters to scan over.
@@ -256,7 +258,7 @@ def conditional_fit_grid_1d(test_val, fix_idx, n_params, N_obs, cond_grid_points
                 p[i] = free_p[free_i]
                 free_i += 1
 
-        nll = calc_nll(p, N_obs, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
+        nll = calc_nll(p, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
         if nll < min_nll:
             min_nll = nll
             best_params = p.copy()
@@ -264,7 +266,7 @@ def conditional_fit_grid_1d(test_val, fix_idx, n_params, N_obs, cond_grid_points
     return min_nll, best_params
 
 @njit(fastmath=True, nogil=True)
-def conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, N_obs, cond_grid_points, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func):
+def conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, N_obs, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func):
     """
     Performs a conditional maximum likelihood fit with two parameters fixed.
 
@@ -281,7 +283,7 @@ def conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, N_obs, con
         The indices of the parameters being fixed.
     n_params : int
         Total number of parameters in the model.
-    N_obs, S_sigma2, B_sigma2 : array_like, any shape (all matching)
+    N_obs, S_sumw2, B_sumw2 : array_like, any shape (all matching)
         Data counts and variances.
     cond_grid_points : array_like, 2D
         Pre-computed grid of the (N-2) free nuisance parameters to scan over.
@@ -311,7 +313,7 @@ def conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, N_obs, con
                 p[i] = free_p[free_i]
                 free_i += 1
 
-        nll = calc_nll(p, N_obs, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
+        nll = calc_nll(p, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
         if nll < min_nll:
             min_nll = nll
             best_params = p.copy()
@@ -322,7 +324,7 @@ def conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, N_obs, con
 # --- 4. Toy Generators (Binned) ---
 @njit(fastmath=True, parallel=True, nogil=True)
 def generate_and_fit_toys_grid_1d(test_val, fix_idx, true_params, n_params,
-                                  full_grid_points, cond_grid_points, n_toys, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func):
+                                  full_grid_points, cond_grid_points, n_toys, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func):
     """
     Generates Poisson toys and computes the 1D test statistic distribution (Feldman-Cousins).
 
@@ -350,7 +352,7 @@ def generate_and_fit_toys_grid_1d(test_val, fix_idx, true_params, n_params,
         The parameter combination used to generate the true expected counts for the toys.
     n_params : int
         Total number of parameters.
-    S_sigma2, B_sigma2 : array_like, any shape
+    S_sumw2, B_sumw2 : array_like, any shape
         Variances (matching whatever shape compute_rates_func's `mu` produces).
     full_grid_points : array_like, 2D
         Grid for the unconditional fit.
@@ -369,7 +371,7 @@ def generate_and_fit_toys_grid_1d(test_val, fix_idx, true_params, n_params,
         Array of length `n_toys` containing the calculated test statistic for each toy.
     """
     t_statistics = np.zeros(n_toys)
-    mu_true, _ = compute_rates_func(true_params, S_sigma2, B_sigma2)
+    mu_true, _ = compute_rates_func(true_params, S_sumw2, B_sumw2)
     mu_true_flat = mu_true.reshape(-1)
     n_bins = mu_true_flat.shape[0]
 
@@ -378,15 +380,15 @@ def generate_and_fit_toys_grid_1d(test_val, fix_idx, true_params, n_params,
         for i in range(n_bins):
             toy_N[i] = np.random.poisson(mu_true_flat[i])
 
-        uncond_nll, _ = unconditional_fit_grid(toy_N, full_grid_points, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
-        cond_nll, _ = conditional_fit_grid_1d(test_val, fix_idx, n_params, toy_N, cond_grid_points, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
+        uncond_nll, _ = unconditional_fit_grid(toy_N, full_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+        cond_nll, _ = conditional_fit_grid_1d(test_val, fix_idx, n_params, toy_N, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
 
         t_statistics[t] = max(0.0, cond_nll - uncond_nll)
     return t_statistics
 
 @njit(fastmath=True, parallel=True, nogil=True)
 def generate_and_fit_toys_grid_2d(test_vA, test_vB, fix_A, fix_B, true_params, n_params,
-                                  full_grid_points, cond_grid_points, n_toys, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func):
+                                  full_grid_points, cond_grid_points, n_toys, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func):
     """
     Generates Poisson toys and computes the 2D test statistic distribution.
 
@@ -405,7 +407,7 @@ def generate_and_fit_toys_grid_2d(test_vA, test_vB, fix_A, fix_B, true_params, n
         The parameter combination used to generate expected counts for the toys.
     n_params : int
         Total number of parameters.
-    S_sigma2, B_sigma2 : array_like, any shape
+    S_sumw2, B_sumw2 : array_like, any shape
         Variances (matching whatever shape compute_rates_func's `mu` produces).
     full_grid_points : array_like, 2D
         Grid for the unconditional fit.
@@ -424,7 +426,7 @@ def generate_and_fit_toys_grid_2d(test_vA, test_vB, fix_A, fix_B, true_params, n
         Array of length `n_toys` containing the calculated test statistic for each toy.
     """
     t_statistics = np.zeros(n_toys)
-    mu_true, _ = compute_rates_func(true_params, S_sigma2, B_sigma2)
+    mu_true, _ = compute_rates_func(true_params, S_sumw2, B_sumw2)
     mu_true_flat = mu_true.reshape(-1)
     n_bins = mu_true_flat.shape[0]
 
@@ -433,8 +435,8 @@ def generate_and_fit_toys_grid_2d(test_vA, test_vB, fix_A, fix_B, true_params, n
         for i in range(n_bins):
             toy_N[i] = np.random.poisson(mu_true_flat[i])
 
-        uncond_nll, _ = unconditional_fit_grid(toy_N, full_grid_points, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
-        cond_nll, _ = conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, toy_N, cond_grid_points, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
+        uncond_nll, _ = unconditional_fit_grid(toy_N, full_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+        cond_nll, _ = conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, toy_N, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
 
         t_statistics[t] = max(0.0, cond_nll - uncond_nll)
     return t_statistics

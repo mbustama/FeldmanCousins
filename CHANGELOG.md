@@ -42,7 +42,7 @@ data.
   warning for `"binned"`.
 - **`compute_rates_func` signature changes for both likelihood types:**
   - Binned: `(params, S_template, B_template, S_sigma2, B_sigma2)` becomes
-    `(params, S_sigma2, B_sigma2)`. Fixed template arrays that used to be
+    `(params, S_sumw2, B_sumw2)`. Fixed template arrays that used to be
     passed as arguments must now be referenced via closure (module-level
     constant or nested-function capture) instead -- this is already
     numba-`@njit`-compatible and is the pattern used throughout
@@ -50,6 +50,17 @@ data.
   - Unbinned: `(params, s_probs, b_probs)` becomes `(params, probs)`,
     where `probs` is a `list[np.ndarray]`, one entry per
     `pdf_components[i]`, in the same order.
+- **`S_sigma2`/`B_sigma2` renamed to `S_sumw2`/`B_sumw2`** everywhere they
+  appear (`compute_fc_intervals`, every optimizer/toy-generation function,
+  `calc_nll`, and the binned grid-search functions). These arrays are the
+  per-bin sum of squared MC weights (`sum(w_i^2)`) -- the standard
+  variance estimator for a weighted MC sample -- used by the finite-MC
+  (Poisson-Gamma) correction. The `S_`/`B_` prefixes now dangle less
+  meaningfully without `S_model`/`B_model` as their counterpart, but the
+  `sigma2` suffix was also imprecise (it names a *derived* quantity
+  computed *by* `compute_rates_func`, not what these arguments actually
+  hold): `sumw2` is unambiguous and matches the term HEP users already
+  know from `TH1::Sumw2()`-style per-bin weight-squared tracking.
 - **`data`, `mu`, and `sigma2` now support arbitrary N-dimensional shapes
   for binned models**, not just flat 1D vectors -- a genuine 2D
   `(E, cos_theta)` histogram (or any other shape) can be evaluated

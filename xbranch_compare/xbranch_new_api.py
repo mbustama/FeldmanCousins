@@ -49,9 +49,9 @@ os.makedirs(args.output_dir, exist_ok=True)
 
 # --- Scenario (a): binned, 1D data, 3-parameter model ---
 @njit(fastmath=True, nogil=True)
-def compute_rates_binned_new(params, S_sigma2, B_sigma2):
+def compute_rates_binned_new(params, S_sumw2, B_sumw2):
     mu = params[0] * sc.S_TEMPLATE_FLAT + params[1] + params[2] * sc.B_TEMPLATE_FLAT
-    sigma2 = (params[0] ** 2) * S_sigma2 + (params[2] ** 2) * B_sigma2
+    sigma2 = (params[0] ** 2) * S_sumw2 + (params[2] ** 2) * B_sumw2
     return mu, sigma2
 
 
@@ -60,8 +60,8 @@ def run_scenario_a():
     mu_true = (sc.TRUE_PARAMS_BINNED[0] * sc.S_TEMPLATE_FLAT + sc.TRUE_PARAMS_BINNED[1]
                + sc.TRUE_PARAMS_BINNED[2] * sc.B_TEMPLATE_FLAT)
     data = np.random.poisson(mu_true).astype(float)
-    s_sigma2 = np.zeros_like(data)
-    b_sigma2 = np.zeros_like(data)
+    s_sumw2 = np.zeros_like(data)
+    b_sumw2 = np.zeros_like(data)
 
     np.random.seed(sc.RNG_SEED)  # re-seed so toy generation starts from a known state
     compute_fc_intervals(
@@ -69,7 +69,7 @@ def run_scenario_a():
         compute_rates_func=compute_rates_binned_new,
         cl=sc.CL, n_toys=sc.N_TOYS, strategy="scipy", num_cores=sc.NUM_CORES, verbose=0,
         sparsify_grid=False, warm_start=False,
-        likelihood_type="binned", S_sigma2=s_sigma2, B_sigma2=b_sigma2,
+        likelihood_type="binned", S_sumw2=s_sumw2, B_sumw2=b_sumw2,
         compute_1D_intervals=True, compute_2D_intervals=False,
         output_file="scenario_a", save_directory=args.output_dir,
     )
@@ -85,16 +85,16 @@ B_TEMPLATE_2D = sc.B_TEMPLATE_FLAT.reshape(sc.BINNED_2D_SHAPE)
 
 
 @njit(fastmath=True, nogil=True)
-def compute_rates_binned_2d(params, S_sigma2, B_sigma2):
+def compute_rates_binned_2d(params, S_sumw2, B_sumw2):
     mu = params[0] * S_TEMPLATE_2D + params[1] + params[2] * B_TEMPLATE_2D
-    sigma2 = (params[0] ** 2) * S_sigma2 + (params[2] ** 2) * B_sigma2
+    sigma2 = (params[0] ** 2) * S_sumw2 + (params[2] ** 2) * B_sumw2
     return mu, sigma2
 
 
 def run_scenario_b(data_flat):
     data_2d = data_flat.reshape(sc.BINNED_2D_SHAPE)
-    s_sigma2 = np.zeros_like(data_2d)
-    b_sigma2 = np.zeros_like(data_2d)
+    s_sumw2 = np.zeros_like(data_2d)
+    b_sumw2 = np.zeros_like(data_2d)
 
     np.random.seed(sc.RNG_SEED)
     results_2d, _ = compute_fc_intervals(
@@ -102,7 +102,7 @@ def run_scenario_b(data_flat):
         compute_rates_func=compute_rates_binned_2d,
         cl=sc.CL, n_toys=sc.N_TOYS, strategy="scipy", num_cores=sc.NUM_CORES, verbose=0,
         sparsify_grid=False, warm_start=False,
-        likelihood_type="binned", S_sigma2=s_sigma2, B_sigma2=b_sigma2,
+        likelihood_type="binned", S_sumw2=s_sumw2, B_sumw2=b_sumw2,
         compute_1D_intervals=True, compute_2D_intervals=False,
         output_file="scenario_b", save_directory=args.output_dir,
     )

@@ -248,11 +248,11 @@ B_template = np.array([15.0, 5.0, 1.0, 0.1])
 
 # B) Define the physics mapper function
 @njit(fastmath=True, nogil=True)
-def my_compute_rates_binned(params, S_sigma2, B_sigma2):
+def my_compute_rates_binned(params, S_sumw2, B_sumw2):
     """ Maps parameters to expected counts (mu) and simulated variances (sigma2). """
     # Example: params[0] = flux_norm, params[1] = spectral_index, params[2] = bg_norm
     mu = (params[0] * params[1]) * S_template + params[2] * B_template
-    sigma2 = ((params[0] * params[1])**2) * S_sigma2 + (params[2]**2) * B_sigma2
+    sigma2 = ((params[0] * params[1])**2) * S_sumw2 + (params[2]**2) * B_sumw2
     return mu, sigma2
 
 # C) Setup Data and Grids

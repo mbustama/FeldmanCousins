@@ -29,10 +29,10 @@ def test_asimov_treatment_convergence():
     dummy_sig = np.zeros_like(dummy_S)
 
     @njit
-    def asimov_compute(params, S_sigma2, B_sigma2):
+    def asimov_compute(params, S_sumw2, B_sumw2):
         mu = params[0] * dummy_S + dummy_B
         # Variances are zeroed out for a pure Asimov check without Finite MC
-        return mu, S_sigma2
+        return mu, S_sumw2
 
     min_nll, best_params = unconditional_fit_scipy(
         data=asimov_data,
@@ -41,8 +41,8 @@ def test_asimov_treatment_convergence():
         compute_rates_func=asimov_compute,
         seed=np.array([1.0]), # Start far away from 5.0
         likelihood_type="binned",
-        S_sigma2=dummy_sig,
-        B_sigma2=dummy_sig,
+        S_sumw2=dummy_sig,
+        B_sumw2=dummy_sig,
         use_finite_mc=False
     )
     

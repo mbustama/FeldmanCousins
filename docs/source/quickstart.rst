@@ -24,10 +24,10 @@ For a binned analysis, fixed templates are ordinary NumPy arrays referenced via 
 
    # B) Define the physics mapper function
    @njit(fastmath=True, nogil=True)
-   def my_compute_rates_binned(params, S_sigma2, B_sigma2):
+   def my_compute_rates_binned(params, S_sumw2, B_sumw2):
        """ Maps parameters to expected counts (mu) and simulated variances (sigma2). """
        mu = (params[0] * params[1]) * S_template + params[2] * B_template
-       sigma2 = ((params[0] * params[1])**2) * S_sigma2 + (params[2]**2) * B_sigma2
+       sigma2 = ((params[0] * params[1])**2) * S_sumw2 + (params[2]**2) * B_sumw2
        return mu, sigma2
 
    # C) Setup Data and Grids
