@@ -48,19 +48,40 @@ def calc_nll_unbinned(params, len_obs, s_probs, b_probs, compute_rates_func):
     Returns:
     --------
     float
-        The calculated NLL value.
+        The calculated NLL value. For events where the model predicts a
+        non-positive density (p_events[k] <= 0), that event's contribution is
+        a smooth, continuous extension of -log(p) rather than a flat penalty
+        (see note below).
+
+    Note on unphysical (p_events <= 0) events:
+    -------------------------------------------
+    Earlier versions of this function returned a flat penalty (1e10) the
+    instant ANY single event had a non-positive predicted density, short-
+    circuiting the entire likelihood. Because `scipy.optimize.minimize(...,
+    method='L-BFGS-B')` estimates gradients via finite differences, a locally
+    -constant NLL surface reads as "gradient ~ 0, already converged," which can
+    permanently trap the optimizer. Instead, each offending event's density is
+    clipped to a tiny positive floor for the -log(p) term (a continuous
+    extension of the real likelihood), and a quadratic barrier proportional to
+    how far below that floor p_events[k] actually is is added per-event, so the
+    gradient stays informative instead of flat. This is applied elementwise
+    (not collapsed via `np.any`), so multiple unphysical events each contribute
+    independently. For all events with p_events[k] > 0, behavior is
+    byte-for-byte identical to before this change.
     """
     expected_total, p_events = compute_rates_func(params, s_probs, b_probs)
-    
+
     # Handle the zero-observation case perfectly
     if len_obs == 0:
         return expected_total
 
-    # Apply a heavy penalty (1e10) if the model predicts negative or zero rate 
-    # for an event that actually occurred, avoiding fatal np.log(x <= 0) math domain errors.
-    if np.any(p_events <= 0):
-        return 1e10 
-        
+    unphysical = p_events <= 0
+    if np.any(unphysical):
+        p_floor = 1e-12
+        p_events_safe = np.where(unphysical, p_floor, p_events)
+        barrier = np.where(unphysical, 1e6 * (p_floor - p_events)**2, 0.0)
+        return expected_total - np.sum(np.log(p_events_safe)) + np.sum(barrier)
+
     return expected_total - np.sum(np.log(p_events))
 
 

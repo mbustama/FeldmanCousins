@@ -85,22 +85,48 @@ def calc_nll(params, N_obs, S_template, B_template, S_sigma2, B_sigma2, use_fini
     Returns:
     --------
     nll : float
-        The calculated negative log-likelihood value. Returns a high penalty (1e10) 
-        if parameters yield unphysical (negative) expected counts.
+        The calculated negative log-likelihood value. For bins where the model
+        yields an unphysical (non-positive) expected count mu_i while data was
+        observed there (n_obs > 0), a smooth quadratic barrier is added to that
+        bin's contribution instead of returning a flat constant (see note below).
+
+    Note on unphysical (mu_i <= 0) bins:
+    -------------------------------------
+    Earlier versions of this function returned a flat penalty (1e10) the instant
+    any bin's expected count went non-positive, discarding whatever NLL had
+    already been accumulated from other bins in this call. Because
+    `scipy.optimize.minimize(..., method='L-BFGS-B')` estimates gradients via
+    finite differences, a locally-constant NLL surface reads as "gradient ~ 0,
+    already converged," which can permanently trap the optimizer if its starting
+    guess lands in a mu <= 0 region (e.g. the bounds midpoint, for a user model
+    that is unphysical there). Instead, the contribution from an unphysical bin
+    is now a continuous extension of the real Poisson NLL term (evaluated at a
+    tiny positive floor) plus a quadratic barrier that grows with how far mu_i
+    actually is below that floor, so the gradient w.r.t. mu_i stays informative
+    and points back toward mu_i > 0. This bin-local contribution is added to the
+    running total rather than short-circuiting the whole function. For all
+    mu_i > 0, behavior is byte-for-byte identical to before this change.
     """
     nll = 0.0
     mu, sigma2_arr = compute_rates_func(params, S_template, B_template, S_sigma2, B_sigma2)
-    
+
     for i in range(len(N_obs)):
         mu_i = mu[i]
         n_obs = float(N_obs[i])
-        
+
         if mu_i <= 0:
             if n_obs > 0:
-                return 1e10  # Heavy penalty for unphysical expectations
-            else:
-                continue
-                
+                mu_floor = 1e-12
+                # Continuous extension of the Poisson NLL term below mu=0, using a
+                # tiny positive floor, plus a quadratic barrier scaled by how far
+                # mu_i actually is below that floor (keeps the gradient informative
+                # instead of flat, unlike the old constant 1e10 penalty).
+                barrier = 1e6 * (mu_floor - mu_i)**2
+                nll += 2.0 * (mu_floor - n_obs + n_obs * math.log(n_obs / mu_floor)) + barrier
+            # else: n_obs == 0 and mu_i <= 0 has no real statistical content here;
+            # behave like a no-op contribution (matches the prior `continue`).
+            continue
+
         if use_finite_mc:
             sigma2 = sigma2_arr[i]
             if sigma2 > 1e-10:
