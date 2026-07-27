@@ -127,6 +127,35 @@ data.
   all physical inputs (`mu_i > 0` / all `p_events[k] > 0`), output is
   byte-for-byte identical to before.
 
+### Fixed
+
+- **`calc_nll` (binned.py) and the two grid-strategy toy generators
+  (`generate_and_fit_toys_grid_1d`/`_2d`) crashed on non-contiguous N-D
+  binned arrays** -- e.g. a transposed histogram (`data.T`) -- with a
+  low-level `numba` `NotImplementedError: incompatible shape for array`
+  instead of working correctly. `numba`'s `nopython`-mode `.reshape(-1)`
+  only accepts C-contiguous input, and this was never triggered during
+  the original N-D-support work, so the guard was never added. Since the
+  entire point of N-D binned support is letting users lay out bins
+  however is natural for them, this is a plausible real-world trigger,
+  not a contrived edge case: anyone who transposes their histogram
+  before calling `compute_fc_intervals` hit this crash. Fixed by copying
+  to a contiguous layout first with `np.ascontiguousarray(...)`, a no-op
+  (zero cost, no copy) on the already-contiguous common path. Covered by
+  new regression tests in `tests/test_nd_binned.py`, both at the
+  `calc_nll` level and end-to-end through `compute_fc_intervals` under
+  both the `"scipy"` and `"grid"` toy-generation strategies.
+- **`save_directory`'s default was inconsistent across the codebase.**
+  `compute_fc_intervals`'s own Python keyword default (`"fc_output"`) and
+  `generate_config.py`'s interactive-wizard default disagreed with
+  `pyfc/config.py`'s CLI/JSON-config default (`"output/example_fc_output"`),
+  which every doc and example already assumed was *the* default. Calling
+  `compute_fc_intervals` directly without a config dict or an explicit
+  `save_directory` -- the style the README's own Quick Start Guide uses
+  for its inline code snippets -- silently wrote output somewhere
+  different from what the docs describe. Unified all three to
+  `"output/example_fc_output"`.
+
 ### Added
 
 - **`generate_corner_plot` now importable as `from pyfc import generate_corner_plot`**
@@ -206,6 +235,20 @@ data.
   numerics, by running equivalent models against both `dev` (old API, via
   a temporary `git worktree`) and `dev-no-templates` (new API) and diffing
   the results.
+- New example notebook, `examples/pyfc_non_contiguous_data_tutorial.ipynb`:
+  demonstrates the non-contiguous-array fix above -- passes a transposed
+  histogram straight into `compute_fc_intervals` and confirms the result
+  matches a contiguous copy of the identical data, after first
+  illustrating the underlying `numba`/`numpy` contiguity restriction in
+  isolation.
+- `.github/workflows/changelog-sync.yml` and `scripts/check_changelog_sync.py`:
+  a CI check that fails the build if this file and
+  `docs/source/changelog.rst` structurally drift out of sync (version/
+  subsection headings, bullet counts, and each bullet's opening wording),
+  since the two are hand-maintained in parallel and RST-only enhancements
+  (admonitions, cross-references) mean a byte-for-byte diff or a generic
+  Markdown-to-RST converter isn't viable. See the script's module
+  docstring for exactly what is and isn't checked.
 
 ## [0.9.2] and earlier
 
