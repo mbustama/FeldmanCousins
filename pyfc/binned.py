@@ -95,12 +95,13 @@ def calc_nll(params, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
     --------
     nll : float
         The calculated negative log-likelihood value. For bins where the model
-        yields an unphysical (non-positive) expected count mu_i while data was
-        observed there (n_obs > 0), a smooth quadratic barrier is added to that
-        bin's contribution instead of returning a flat constant (see note below).
+        yields an unphysical or near-zero expected count mu_i (<= 1e-12) while
+        data was observed there (n_obs > 0), a smooth quadratic barrier is
+        added to that bin's contribution instead of returning a flat constant
+        (see note below).
 
-    Note on unphysical (mu_i <= 0) bins:
-    -------------------------------------
+    Note on unphysical (mu_i <= mu_floor = 1e-12) bins:
+    ----------------------------------------------------
     Earlier versions of this function returned a flat penalty (1e10) the instant
     any bin's expected count went non-positive, discarding whatever NLL had
     already been accumulated from other bins in this call. Because
@@ -113,9 +114,16 @@ def calc_nll(params, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
     tiny positive floor) plus a quadratic barrier that grows with how far mu_i
     actually is below that floor, so the gradient w.r.t. mu_i stays informative
     and points back toward mu_i > 0. This bin-local contribution is added to the
-    running total rather than short-circuiting the whole function. For all
-    mu_i > 0, behavior is practically identical to before this change (matches
-    to within 1e-12 relative/absolute tolerance; see tests/test_smoothing.py).
+    running total rather than short-circuiting the whole function. The trigger
+    is `mu_i <= mu_floor` rather than `mu_i <= 0` specifically so there is no
+    razor-thin discontinuity in the tiny sliver `(0, mu_floor)`: the real
+    Poisson term diverges as mu_i -> 0+, while the floor-based term is constant
+    (evaluated at mu_floor, not at the actual mu_i), so triggering only at
+    mu_i <= 0 would make the NLL drop right at that boundary instead of
+    continuing to climb. For all mu_i > mu_floor (i.e. all physically
+    meaningful values -- mu_floor is astronomically small), behavior is
+    practically identical to before this change (matches to within 1e-12
+    relative/absolute tolerance; see tests/test_smoothing.py).
     """
     nll = 0.0
     mu, sigma2_arr = compute_rates_func(params, S_sumw2, B_sumw2)
@@ -130,18 +138,32 @@ def calc_nll(params, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
     for i in range(len(N_obs_flat)):
         mu_i = mu_flat[i]
         n_obs = float(N_obs_flat[i])
+        mu_floor = 1e-12
 
-        if mu_i <= 0:
+        # Triggered for mu_i <= mu_floor, not just mu_i <= 0: the physical
+        # branch's own Poisson term below diverges to +inf as mu_i -> 0+, while
+        # this branch's base term is constant (evaluated at the fixed
+        # mu_floor, not at the actual mu_i). If the trigger were mu_i <= 0,
+        # the tiny physical sliver (0, mu_floor) would still take the
+        # diverging physical branch, so crossing from mu_i = +epsilon to
+        # mu_i = -epsilon would make the NLL drop rather than keep climbing.
+        # Extending the trigger to include that sliver removes the
+        # discontinuity: at mu_i == mu_floor exactly, both formulations
+        # already agree (barrier is 0 there by construction).
+        if mu_i <= mu_floor:
             if n_obs > 0:
-                mu_floor = 1e-12
                 # Continuous extension of the Poisson NLL term below mu=0, using a
                 # tiny positive floor, plus a quadratic barrier scaled by how far
                 # mu_i actually is below that floor (keeps the gradient informative
                 # instead of flat, unlike the old constant 1e10 penalty).
                 barrier = 1e6 * (mu_floor - mu_i)**2
                 nll += 2.0 * (mu_floor - n_obs + n_obs * math.log(n_obs / mu_floor)) + barrier
-            # else: n_obs == 0 and mu_i <= 0 has no real statistical content here;
-            # behave like a no-op contribution (matches the prior `continue`).
+            # else: n_obs == 0 and mu_i <= mu_floor has no real statistical
+            # content here; behave like a no-op contribution (matches the
+            # prior `continue`). Note: for n_obs == 0 and mu_i in the sliver
+            # (0, mu_floor), the physical branch below would instead have
+            # contributed 2.0 * mu_i (at most ~2e-12) -- utterly negligible,
+            # and the right trade for keeping the n_obs > 0 case continuous.
             continue
 
         if use_finite_mc:

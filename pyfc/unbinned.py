@@ -50,13 +50,14 @@ def calc_nll_unbinned(params, len_obs, probs, compute_rates_func):
     Returns:
     --------
     float
-        The calculated NLL value. For events where the model predicts a
-        non-positive density (p_events[k] <= 0), that event's contribution is
-        a smooth, continuous extension of -log(p) rather than a flat penalty
+        The calculated NLL value. For events where the model predicts an
+        unphysical or near-zero density (p_events[k] <= 1e-12), that event's
+        contribution is a smooth, continuous extension of -log(p) rather
+        than a flat penalty
         (see note below).
 
-    Note on unphysical (p_events <= 0) events:
-    -------------------------------------------
+    Note on unphysical (p_events <= p_floor = 1e-12) events:
+    -----------------------------------------------------------
     Earlier versions of this function returned a flat penalty (1e10) the
     instant ANY single event had a non-positive predicted density, short-
     circuiting the entire likelihood. Because `scipy.optimize.minimize(...,
@@ -68,7 +69,14 @@ def calc_nll_unbinned(params, len_obs, probs, compute_rates_func):
     how far below that floor p_events[k] actually is is added per-event, so the
     gradient stays informative instead of flat. This is applied elementwise
     (not collapsed via `np.any`), so multiple unphysical events each contribute
-    independently. For all events with p_events[k] > 0, behavior is
+    independently. The trigger is `p_events <= p_floor` rather than
+    `p_events <= 0` specifically so there is no razor-thin discontinuity in the
+    tiny sliver `(0, p_floor)`: the real -log(p) term diverges as
+    p_events -> 0+, while the floor-based term is constant (evaluated at
+    p_floor, not at the actual p_events[k]), so triggering only at
+    p_events <= 0 would make the NLL drop right at that boundary instead of
+    continuing to climb. For all p_events[k] > p_floor (i.e. all physically
+    meaningful values -- p_floor is astronomically small), behavior is
     practically identical to before this change (matches to within 1e-12
     relative/absolute tolerance; see tests/test_smoothing.py).
     """
@@ -78,9 +86,19 @@ def calc_nll_unbinned(params, len_obs, probs, compute_rates_func):
     if len_obs == 0:
         return expected_total
 
-    unphysical = p_events <= 0
+    # Triggered for p_events <= p_floor, not just p_events <= 0: the physical
+    # branch's own -log(p) term below diverges to +inf as p_events -> 0+,
+    # while this branch's floor term is constant (evaluated at the fixed
+    # p_floor, not at the actual p_events). If the trigger were
+    # p_events <= 0, the tiny physical sliver (0, p_floor) would still take
+    # the diverging physical branch, so crossing from p_events = +epsilon to
+    # p_events = -epsilon would make the NLL drop rather than keep climbing.
+    # Extending the trigger to include that sliver removes the discontinuity:
+    # at p_events == p_floor exactly, both formulations already agree
+    # (barrier is 0 there by construction).
+    p_floor = 1e-12
+    unphysical = p_events <= p_floor
     if np.any(unphysical):
-        p_floor = 1e-12
         p_events_safe = np.where(unphysical, p_floor, p_events)
         barrier = np.where(unphysical, 1e6 * (p_floor - p_events)**2, 0.0)
         return expected_total - np.sum(np.log(p_events_safe)) + np.sum(barrier)

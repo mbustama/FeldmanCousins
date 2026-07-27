@@ -228,6 +228,28 @@ data.
   `pyfc_non_contiguous_data_tutorial.ipynb`,
   `pyfc_quickstart_tutorial.ipynb`, and
   `pyfc_strategy_comparison_tutorial.ipynb`.
+- **A razor-thin (~1e-12-wide) NLL discontinuity in the unphysical-region
+  smoothing** (`binned.calc_nll`, `unbinned.calc_nll_unbinned`), left over
+  from the smoothing fix documented above. For a bin/event with real
+  observed data, the physical branch's Poisson term correctly diverges to
+  `+inf` as `mu_i`/`p_events` -> 0+, but the unphysical branch's base term
+  is evaluated at a *fixed* floor (`mu_floor`/`p_floor` = `1e-12`) rather
+  than at the actual value, and was triggered only at `mu_i <= 0`/
+  `p_events <= 0`. That left the tiny physical sliver `(0, 1e-12)` on the
+  diverging physical branch, so crossing from `+epsilon` to `-epsilon`
+  made the NLL *drop* right at the boundary instead of continuing to
+  climb -- the opposite of the smoothing fix's whole purpose. Very
+  unlikely to be hit in practice (no realistic optimizer step lands
+  within `1e-12` of exactly zero), but fixed defensively anyway: the
+  trigger is now `mu_i <= mu_floor` / `p_events <= p_floor`, so the
+  transition point is single and consistent, approached from both
+  directions. `mu_floor`/`p_floor` are astronomically smaller than any
+  physically meaningful value, so this has no practical effect on real
+  fits (verified: existing backward-compatibility tests for the
+  physical-branch formula, `test_binned_calc_nll_identical_for_physical_bins`/
+  `test_unbinned_calc_nll_identical_for_physical_events`, are unaffected).
+  New fine-resolution monotonicity-sweep tests in `tests/test_smoothing.py`
+  covering the exact old discontinuity point.
 
 ### Added
 

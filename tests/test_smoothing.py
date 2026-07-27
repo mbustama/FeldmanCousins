@@ -110,6 +110,48 @@ def test_binned_calc_nll_smooth_through_unphysical_region():
     assert not np.allclose(unphysical_vals, 1e10)
 
 
+def test_binned_calc_nll_monotonic_across_mu_floor_transition():
+    """
+    Regression test for the ~1e-12-wide discontinuity fixed by triggering the
+    unphysical branch at mu_i <= mu_floor instead of mu_i <= 0: previously,
+    the tiny physical sliver (0, mu_floor) still took the diverging physical
+    Poisson branch, so crossing from mu_i = +epsilon to mu_i = -epsilon made
+    the NLL *drop* right at that boundary instead of continuing to climb.
+    Sweeps mu_i at fine resolution straddling mu_floor = 1e-12 from both
+    sides and asserts strict monotonicity throughout, including exactly at
+    the old discontinuity point.
+    """
+    N_obs = np.array([5.0])
+    S_sumw2 = np.zeros(1)
+    B_sumw2 = np.zeros(1)
+    mu_floor = 1e-12
+
+    # Fine sweep straddling mu_floor, descending (mu_i decreasing towards and
+    # past zero) so the NLL should be monotonically non-decreasing throughout.
+    xs = np.linspace(mu_floor * 2.0, mu_floor * -2.0, 41)
+    nlls = []
+    for x in xs:
+        nll = calc_nll(np.array([x]), N_obs, S_sumw2, B_sumw2, False, _linear_rate_func)
+        nlls.append(nll)
+        assert np.isfinite(nll)
+
+    diffs = np.diff(nlls)
+    assert np.all(diffs >= -1e-9), (
+        "NLL dropped while sweeping mu_i across the mu_floor transition -- "
+        "the old mu_i <= 0 discontinuity has regressed."
+    )
+
+    # A coarser sweep spanning +/- 1e-9 (well beyond mu_floor in both
+    # directions) must also stay monotonic, covering the full transition
+    # neighborhood, not just the immediate vicinity of mu_floor itself.
+    xs_wide = np.linspace(1e-9, -1e-9, 41)
+    nlls_wide = [
+        calc_nll(np.array([x]), N_obs, S_sumw2, B_sumw2, False, _linear_rate_func)
+        for x in xs_wide
+    ]
+    assert np.all(np.diff(nlls_wide) >= -1e-9)
+
+
 def test_binned_calc_nll_no_early_return_preserves_other_bins():
     """
     A violation in one bin must not discard the NLL contribution already
@@ -169,6 +211,36 @@ def test_unbinned_calc_nll_smooth_through_unphysical_region():
     assert np.all(diffs != 0.0), "Unphysical branch is flat -- gradient trap not fixed"
     assert np.all(diffs >= 0.0), "Unphysical branch is non-monotonic"
     assert not np.allclose(unphysical_vals, 1e10)
+
+
+def test_unbinned_calc_nll_monotonic_across_p_floor_transition():
+    """
+    Regression test for the ~1e-12-wide discontinuity fixed by triggering the
+    unphysical branch at p_events <= p_floor instead of p_events <= 0 (see
+    the analogous binned test above for the full explanation).
+    """
+    def rate_func(params, probs):
+        return 5.0, np.array([params[0]])
+
+    p_floor = 1e-12
+
+    xs = np.linspace(p_floor * 2.0, p_floor * -2.0, 41)
+    nlls = [
+        calc_nll_unbinned(np.array([x]), 1, [np.array([1.0]), np.array([1.0])], rate_func)
+        for x in xs
+    ]
+    assert all(np.isfinite(n) for n in nlls)
+    assert np.all(np.diff(nlls) >= -1e-9), (
+        "NLL dropped while sweeping p_events across the p_floor transition -- "
+        "the old p_events <= 0 discontinuity has regressed."
+    )
+
+    xs_wide = np.linspace(1e-9, -1e-9, 41)
+    nlls_wide = [
+        calc_nll_unbinned(np.array([x]), 1, [np.array([1.0]), np.array([1.0])], rate_func)
+        for x in xs_wide
+    ]
+    assert np.all(np.diff(nlls_wide) >= -1e-9)
 
 
 def test_unbinned_calc_nll_elementwise_not_any_collapsed():
