@@ -2,7 +2,6 @@ bin/
 lib/
 obj/
 .ipynb_checkpoints/
-PyFC.egg-info/
 **/__pycache__
 *.pyc
 *.csv
@@ -14,3 +13,5 @@ examples/algorithmic_features_output/
 examples/strategy_comparison_output/
 PyFeldmanCousins.egg-info/
 xbranch_compare/output/
+output/
+fc_output/
