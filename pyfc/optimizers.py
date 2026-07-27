@@ -619,6 +619,38 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, bou
 
 
 # --- 2. UltraNest Optimizers ---
+def _run_ultranest_with_retry(param_names, log_likelihood, prior_transform, run_kwargs, max_attempts=3):
+    """
+    Constructs an `ultranest.ReactiveNestedSampler` and calls `.run(**run_kwargs)`,
+    retrying with a fresh sampler instance on a specific, still-open UltraNest bug
+    (confirmed present through at least v4.5.0 and the current GitHub master, in
+    `ReactiveNestedSampler._find_strategy`): an internal random subsample
+    (`itmax = np.random.choice(len(w), p=w)`) can occasionally select too few
+    saved iterations, producing a degenerate 1D `logweights` array where 2D
+    indexing is expected, and crashing with `IndexError: too many indices for
+    array: array is 1-dimensional, but 2 were indexed`. This is triggered by
+    UltraNest's own internal exploration randomness, not by anything in the
+    likelihood/prior being sampled, so a fresh attempt reliably avoids the
+    degenerate draw -- this mirrors `_minimize_with_restarts`'s retry-on-failure
+    pattern for the scipy path.
+    """
+    last_exc = None
+    for attempt in range(max_attempts):
+        sampler = ultranest.ReactiveNestedSampler(param_names, log_likelihood, prior_transform, log_dir=None)
+        try:
+            return sampler.run(**run_kwargs)
+        except IndexError as e:
+            if "too many indices for array" not in str(e):
+                raise
+            last_exc = e
+            if attempt < max_attempts - 1:
+                warnings.warn(
+                    f"UltraNest hit a known internal bug (attempt {attempt + 1}/{max_attempts}): {e}. "
+                    "Retrying with a fresh sampler."
+                )
+    raise last_exc
+
+
 def unconditional_fit_ultranest(data, n_params, bounds_list, compute_rates_func, verbose=1,
                                 pdf_components=None,
                                 likelihood_type="binned", S_sumw2=None, B_sumw2=None, use_finite_mc=False,
@@ -697,9 +729,8 @@ def unconditional_fit_ultranest(data, n_params, bounds_list, compute_rates_func,
             return -calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
 
     param_names = [f'p{i+1}' for i in range(n_params)]
-    sampler = ultranest.ReactiveNestedSampler(param_names, log_likelihood, prior_transform, log_dir=None)
     run_kwargs = {'min_num_live_points': 50, 'dKL': np.inf, 'min_ess': 50, 'show_status': (verbose == 2), 'viz_callback': False}
-    result = sampler.run(**run_kwargs)
+    result = _run_ultranest_with_retry(param_names, log_likelihood, prior_transform, run_kwargs)
     return -result['maximum_likelihood']['logl'], result['maximum_likelihood']['point']
 
 def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, bounds_list, compute_rates_func, verbose=1,
@@ -798,9 +829,8 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, bounds_list,
             return -calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
 
     param_names = [f'f{i+1}' for i in range(len(free_bounds))]
-    sampler = ultranest.ReactiveNestedSampler(param_names, log_likelihood, prior_transform, log_dir=None)
     run_kwargs = {'min_num_live_points': 50, 'dKL': np.inf, 'min_ess': 50, 'show_status': (verbose == 2), 'viz_callback': False}
-    result = sampler.run(**run_kwargs)
+    result = _run_ultranest_with_retry(param_names, log_likelihood, prior_transform, run_kwargs)
 
     best_p = np.zeros(n_params)
     best_p[fix_idx] = test_val
@@ -904,9 +934,8 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
             return -calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
 
     param_names = [f'f{i+1}' for i in range(len(free_bounds))]
-    sampler = ultranest.ReactiveNestedSampler(param_names, log_likelihood, prior_transform, log_dir=None)
     run_kwargs = {'min_num_live_points': 50, 'dKL': np.inf, 'min_ess': 50, 'show_status': (verbose == 2), 'viz_callback': False}
-    result = sampler.run(**run_kwargs)
+    result = _run_ultranest_with_retry(param_names, log_likelihood, prior_transform, run_kwargs)
     
     best_p = np.zeros(n_params)
     best_p[fix_A] = test_vA
