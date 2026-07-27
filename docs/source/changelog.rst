@@ -1,6 +1,12 @@
 Changelog
 =========
 
+.. This page is a hand-maintained RST mirror of CHANGELOG.md, and CI
+   (.github/workflows/changelog-sync.yml) checks the two stay structurally
+   in sync on every change. See scripts/check_changelog_sync.py's module
+   docstring for exactly what "in sync" means (and doesn't) before editing
+   either file.
+
 All notable changes to PyFC are documented here. This page mirrors the
 project's `CHANGELOG.md <https://github.com/mbustama/FeldmanCousins/blob/main/CHANGELOG.md>`_
 at the repository root.

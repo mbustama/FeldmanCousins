@@ -1,5 +1,13 @@
 # Changelog
 
+<!--
+This file is mirrored by hand into docs/source/changelog.rst, and CI
+(.github/workflows/changelog-sync.yml) checks the two stay structurally in
+sync on every change. See scripts/check_changelog_sync.py's module
+docstring for exactly what "in sync" means (and doesn't) before editing
+either file.
+-->
+
 All notable changes to PyFC are documented in this file.
 
 ## [0.10.0]
