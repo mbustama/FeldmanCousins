@@ -184,15 +184,20 @@ def parse_rst(path: Path) -> list:
         line = lines[i]
         nxt = lines[i + 1].strip() if i + 1 < n else ""
         title = line.strip()
+        # RST section titles are always preceded by a blank line; requiring
+        # that here avoids misreading a bullet's own continuation text as a
+        # heading on the rare chance it's immediately followed by a line of
+        # 3+ dashes/tildes (e.g. an ASCII-art separator inside a bullet body).
+        preceded_by_blank = (i == 0) or (lines[i - 1].strip() == "")
 
-        if title and re.fullmatch(r"-{3,}", nxt) and len(nxt) >= len(title):
+        if title and preceded_by_blank and re.fullmatch(r"-{3,}", nxt) and len(nxt) >= len(title):
             flush_bullet()
             cur_version = VersionSection(key=title)
             versions.append(cur_version)
             cur_sub = None
             i += 2
             continue
-        if title and re.fullmatch(r"~{3,}", nxt) and len(nxt) >= len(title):
+        if title and preceded_by_blank and re.fullmatch(r"~{3,}", nxt) and len(nxt) >= len(title):
             flush_bullet()
             cur_sub = Subsection(name=title)
             if cur_version is not None:
