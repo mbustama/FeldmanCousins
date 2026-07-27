@@ -30,7 +30,7 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest"]
 dev = ["pytest", "twine", "build"]
-docs = ["sphinx", "sphinx-theme-name", "sphinxcontrib-bibtex"] 
+docs = ["sphinx", "sphinx-rtd-theme", "sphinxcontrib-bibtex"]
 optimizers = ["ultranest", "tqdm"]
 
 [project.urls]

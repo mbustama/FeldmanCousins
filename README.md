@@ -523,7 +523,7 @@ where $N_{\text{expected}}$ is the integral of the total rate, and $\lambda(x_j)
 ## Outputs, Plots, and Checkpointing
 
 ### The Checkpoint Engine (`warm_start`)
-Feldman-Cousins calculations are highly resource-intensive and often run on shared HPC clusters subject to preemption limits (e.g., Slurm time limits). By default, `warm_start` is set to `True`. PyFC dynamically writes its state to `fc_output/checkpoint_fc.npz` after processing each 1D slice of the parameters of interest. 
+Feldman-Cousins calculations are highly resource-intensive and often run on shared HPC clusters subject to preemption limits (e.g., Slurm time limits). By default, `warm_start` is set to `True`. PyFC dynamically writes its state to `checkpoint_fc.npz` inside your `save_directory` (default: `output/example_fc_output/`) after processing each 1D slice of the parameters of interest. 
 
 If your script is interrupted, simply run it again. PyFC will detect the `checkpoint_fc.npz` file, rigorously verify that your newly requested parameter grids match the saved geometry exactly, and seamlessly resume toy generation from the exact point of interruption.
 
