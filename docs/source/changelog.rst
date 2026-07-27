@@ -214,6 +214,33 @@ Fixed
   it still under-counts the true accepted region -- see the caveat now
   documented in ``compute_fc_intervals``'s docstring and README's
   "Contour Edge Tracing" section. Tracked as follow-up work.
+* **``compute_fc_intervals``'s own Python keyword defaults disagreed with
+  README.md's documented defaults for six parameters**: ``n_toys``
+  (``2000`` vs. documented ``500``), ``save_log`` (``False`` vs.
+  ``True``), ``smooth_1d``/``smooth_2d`` (``False``/``False`` vs.
+  ``True``/``True``), and ``cl`` (resolved to ``[0.90]`` when omitted,
+  vs. documented ``[0.68, 0.90]``). Anyone calling ``compute_fc_intervals``
+  directly without a config dict -- again, the README's own Quick Start
+  Guide style -- silently got different behavior than what the docs
+  describe (e.g. 4x fewer toys, no persistent log, unsmoothed plots, only
+  a single CL). Unified all six to match README.md. ``num_cores``,
+  ``output_file``, and ``param_names`` are deliberately left as their
+  existing ``None``-sentinel defaults (auto-detect hardware threads, skip
+  writing a results file, and auto-generate ``param{i}`` names matching
+  the model's actual ``n_params``, respectively) rather than hardcoded to
+  README's example-config values, since those three sentinels encode real
+  auto-detect/opt-out behavior that a literal copy would remove or, for
+  ``param_names``, actively break on any model where ``n_params != 3``;
+  this is now spelled out explicitly in the docstring for each. Five
+  example notebooks that omitted ``save_log``/``smooth_1d``/``smooth_2d``
+  (relying on the old implicit defaults) were re-executed to refresh
+  their embedded (now-smoothed) plot images:
+  ``pyfc_algorithmic_features_tutorial.ipynb``,
+  ``pyfc_high_dimensional_tutorial.ipynb``,
+  ``pyfc_joint_constraints_tutorial.ipynb``,
+  ``pyfc_non_contiguous_data_tutorial.ipynb``,
+  ``pyfc_quickstart_tutorial.ipynb``, and
+  ``pyfc_strategy_comparison_tutorial.ipynb``.
 
 Added
 ~~~~~

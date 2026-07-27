@@ -241,14 +241,14 @@ def _save_fc_json(results, output_path, cl, compute_1D_intervals, compute_2D_int
 
 def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func=None,
                          pdf_components=None,
-                         cl=None, n_toys=2000, strategy="scipy", num_cores=None, verbose=1,
+                         cl=None, n_toys=500, strategy="scipy", num_cores=None, verbose=1,
                          adaptive_toys=True, toy_batch_size=200,
                          sparsify_grid=False, warm_start=True,
                          likelihood_type="binned", S_mc_pool=None, B_mc_pool=None,
-                         output_file=None, save_log=False, save_directory="output/example_fc_output",
+                         output_file=None, save_log=True, save_directory="output/example_fc_output",
                          use_finite_mc_correction_binned=True, S_sumw2=None, B_sumw2=None,
                          compute_1D_intervals=True, compute_2D_intervals=True, param_names=None,
-                         smooth_1d=False, smooth_2d=False, bounds_func=None,
+                         smooth_1d=True, smooth_2d=True, bounds_func=None,
                          constraints=None, scipy_method=None,
                          n_restarts=1, neighbor_seeding=True):
     """
@@ -306,7 +306,12 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
     strategy : str, optional
         Optimizer strategy: "grid", "scipy", "ultranest", or "hybrid".
     num_cores : int, optional
-        Number of parallel threads for toy generation.
+        Number of parallel threads for toy generation. Defaults to None,
+        which is forwarded as-is to the underlying
+        `ThreadPoolExecutor`/`ProcessPoolExecutor`/`numba.set_num_threads`
+        calls; all three treat None as "use every available hardware
+        thread" (equivalent to `os.cpu_count()`). Pass an explicit integer
+        to cap this, e.g. to match a Slurm/PBS core allocation.
     verbose : int, optional
         0 = Silent, 1 = Normal, 2 = Debug.
     adaptive_toys, toy_batch_size, warm_start : bool/int
@@ -330,7 +335,10 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
         I/O file structures. `save_directory` (default `"output/example_fc_output"`,
         relative to the current working directory) is where checkpoints and final
         results are written; see the README's "Outputs, Plots, and Checkpointing"
-        section.
+        section. `output_file` defaults to None, meaning no final `.npz`/`.json`
+        archive is written -- only the in-memory `results` dict (this function's
+        first return value) is populated; pass a string prefix (e.g. `"fc_results"`)
+        to also write `{save_directory}/{output_file}.npz` and `.json`.
     use_finite_mc_correction_binned : bool, optional
         Toggle for Poisson-Gamma mixture likelihood.
     S_sumw2, B_sumw2 : array_like, optional
@@ -338,7 +346,10 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
     compute_1D_intervals, compute_2D_intervals : bool
         Switches for calculating 1D profiles or 2D joint contours.
     param_names : list of str, optional
-        Names used for plot labels.
+        Names used for plot labels. Defaults to None, which auto-generates
+        `["param1", "param2", ...]` matching `len(grids)` -- i.e. it always
+        matches the actual number of parameters in this specific model,
+        unlike hardcoding a fixed-length example list would.
     smooth_1d, smooth_2d : bool, optional
         Toggles interpolation smoothing for final plot outputs.
     bounds_func : callable, optional
@@ -415,7 +426,7 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
         warnings.warn("`pdf_components` was supplied but is unused for likelihood_type='binned'; ignoring it.")
 
     if cl is None:
-        cl = [0.90]
+        cl = [0.68, 0.90]
         
     os.makedirs(save_directory, exist_ok=True)
     n_params = len(grids)
