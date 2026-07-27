@@ -268,7 +268,8 @@ def _minimize_with_restarts(cost, x0, bounds, method, extra_kwargs, n_restarts=1
 
 
 # --- 1. Scipy Continuous Optimizers ---
-def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compute_rates_func, seed=None,
+def unconditional_fit_scipy(data, n_params, bounds_list, compute_rates_func, seed=None,
+                            pdf_components=None,
                             likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
                             bounds_func=None, constraints=None, scipy_method=None, n_restarts=1):
     """
@@ -291,9 +292,7 @@ def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compu
     Parameters:
     -----------
     data : array_like
-        The observed dataset (binned counts or unbinned events).
-    S_model, B_model : callable or array_like
-        Functions or arrays representing the signal and background models/templates.
+        The observed dataset (binned counts of any shape, or unbinned events).
     n_params : int
         Total number of parameters in the model.
     bounds_list : list of tuples
@@ -302,6 +301,11 @@ def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compu
         User-provided mapping function matching parameters to physical expectations.
     seed : array_like, 1D, optional
         Initial parameter guess. If None, the midpoint of the bounds is used.
+    pdf_components : list of callable, optional
+        Probability density functions, one per model component (e.g. signal,
+        background). Required when `likelihood_type="unbinned"`; each is
+        evaluated exactly once on `data` and the resulting arrays are reused
+        across every NLL evaluation in this fit. Unused for `"binned"`.
     likelihood_type : str
         Either "binned" or "unbinned".
     S_sigma2, B_sigma2 : array_like, optional
@@ -341,14 +345,13 @@ def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compu
     """
     if likelihood_type == "unbinned":
         len_obs = len(data)
-        s_probs = S_model(data) if len_obs > 0 else np.array([])
-        b_probs = B_model(data) if len_obs > 0 else np.array([])
+        probs = [pdf(data) if len_obs > 0 else np.array([]) for pdf in pdf_components]
 
         def cost(params):
-            return calc_nll_unbinned(params, len_obs, s_probs, b_probs, compute_rates_func)
+            return calc_nll_unbinned(params, len_obs, probs, compute_rates_func)
     else:
         def cost(params):
-            return calc_nll(params, data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
+            return calc_nll(params, data, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
 
     if bounds_func is not None:
         resolved_bounds = bounds_func({}, list(range(n_params)), bounds_list)
@@ -370,7 +373,8 @@ def unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compu
     res = _minimize_with_restarts(cost, x0, resolved_bounds, method, extra_kwargs, n_restarts, label=" (unconditional fit)")
     return res.fun, res.x
 
-def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, seed=None,
+def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, bounds_list, compute_rates_func, seed=None,
+                             pdf_components=None,
                              likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
                              bounds_func=None, constraints=None, scipy_method=None, n_restarts=1):
     """
@@ -393,12 +397,16 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model
         The index of the parameter being fixed.
     n_params : int
         Total number of parameters.
-    data, S_model, B_model, bounds_list : various
-        Dataset, models, and boundary constraints.
+    data, bounds_list : various
+        Dataset (binned counts of any shape, or unbinned events) and boundary
+        constraints.
     compute_rates_func : callable
         User-provided mapping function matching parameters to physical expectations.
     seed : array_like, 1D, optional
         Initial guess for the *free* parameters.
+    pdf_components : list of callable, optional
+        Probability density functions, one per model component. Required
+        when `likelihood_type="unbinned"`; unused for `"binned"`.
     likelihood_type, S_sigma2, B_sigma2, use_finite_mc : various
         Likelihood formulation configurations.
     bounds_func : callable, optional
@@ -448,23 +456,22 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model
 
     if likelihood_type == "unbinned":
         len_obs = len(data)
-        s_probs = S_model(data) if len_obs > 0 else np.array([])
-        b_probs = B_model(data) if len_obs > 0 else np.array([])
-        
+        probs = [pdf(data) if len_obs > 0 else np.array([]) for pdf in pdf_components]
+
         def cost(free_p):
             p = np.zeros(n_params)
             p[fix_idx] = test_val
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
-            return calc_nll_unbinned(p, len_obs, s_probs, b_probs, compute_rates_func)
+            return calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
     else:
         def cost(free_p):
             p = np.zeros(n_params)
             p[fix_idx] = test_val
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
-            return calc_nll(p, data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
-            
+            return calc_nll(p, data, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
+
     # x0 = seed if seed is not None else [(b[0] + b[1]) / 2.0 for b in free_bounds]
     if seed is not None:
         eps = 1e-8
@@ -473,7 +480,7 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model
         x0 = np.clip(seed, lb, ub)
     else:
         x0 = [(b[0] + b[1]) / 2.0 for b in free_bounds]
-        
+
     if len(free_bounds) == 0:
         p = np.zeros(n_params)
         p[fix_idx] = test_val
@@ -491,7 +498,8 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, S_model, B_model
 
     return res.fun, best_p
 
-def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, seed=None,
+def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, seed=None,
+                             pdf_components=None,
                              likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
                              bounds_func=None, constraints=None, scipy_method=None, n_restarts=1):
     """
@@ -510,12 +518,16 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_m
         The indices of the parameters being fixed.
     n_params : int
         Total number of parameters.
-    data, S_model, B_model, bounds_list : various
-        Dataset, models, and boundary constraints.
+    data, bounds_list : various
+        Dataset (binned counts of any shape, or unbinned events) and boundary
+        constraints.
     compute_rates_func : callable
         User-provided mapping function matching parameters to physical expectations.
     seed : array_like, 1D, optional
         Initial guess for the *free* parameters.
+    pdf_components : list of callable, optional
+        Probability density functions, one per model component. Required
+        when `likelihood_type="unbinned"`; unused for `"binned"`.
     likelihood_type, S_sigma2, B_sigma2, use_finite_mc : various
         Likelihood formulation configurations.
     bounds_func : callable, optional
@@ -558,16 +570,15 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_m
 
     if likelihood_type == "unbinned":
         len_obs = len(data)
-        s_probs = S_model(data) if len_obs > 0 else np.array([])
-        b_probs = B_model(data) if len_obs > 0 else np.array([])
-        
+        probs = [pdf(data) if len_obs > 0 else np.array([]) for pdf in pdf_components]
+
         def cost(free_p):
             p = np.zeros(n_params)
             p[fix_A] = test_vA
             p[fix_B] = test_vB
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
-            return calc_nll_unbinned(p, len_obs, s_probs, b_probs, compute_rates_func)
+            return calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
     else:
         def cost(free_p):
             p = np.zeros(n_params)
@@ -575,8 +586,8 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_m
             p[fix_B] = test_vB
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
-            return calc_nll(p, data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
-            
+            return calc_nll(p, data, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
+
     # x0 = seed if seed is not None else [(b[0] + b[1]) / 2.0 for b in free_bounds]
     if seed is not None:
         eps = 1e-8
@@ -585,7 +596,7 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_m
         x0 = np.clip(seed, lb, ub)
     else:
         x0 = [(b[0] + b[1]) / 2.0 for b in free_bounds]
-        
+
     if len(free_bounds) == 0:
         p = np.zeros(n_params)
         p[fix_A] = test_vA
@@ -607,7 +618,8 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, S_m
 
 
 # --- 2. UltraNest Optimizers ---
-def unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, compute_rates_func, verbose=1,
+def unconditional_fit_ultranest(data, n_params, bounds_list, compute_rates_func, verbose=1,
+                                pdf_components=None,
                                 likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
                                 bounds_func=None, constraints=None):
     """
@@ -628,9 +640,7 @@ def unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, c
     Parameters:
     -----------
     data : array_like
-        The observed dataset (binned counts or unbinned events).
-    S_model, B_model : callable or array_like
-        Functions or arrays representing the signal and background models.
+        The observed dataset (binned counts of any shape, or unbinned events).
     n_params : int
         Total number of parameters in the model.
     bounds_list : list of tuples
@@ -639,6 +649,9 @@ def unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, c
         User-provided mapping function matching parameters to physical expectations.
     verbose : int
         Verbosity level controlling UltraNest output (2 for full tracking).
+    pdf_components : list of callable, optional
+        Probability density functions, one per model component. Required
+        when `likelihood_type="unbinned"`; unused for `"binned"`.
     likelihood_type, S_sigma2, B_sigma2, use_finite_mc : various
         Likelihood formulation configurations.
     bounds_func : callable, optional
@@ -670,18 +683,17 @@ def unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, c
 
     if likelihood_type == "unbinned":
         len_obs = len(data)
-        s_probs = S_model(data) if len_obs > 0 else np.array([])
-        b_probs = B_model(data) if len_obs > 0 else np.array([])
+        probs = [pdf(data) if len_obs > 0 else np.array([]) for pdf in pdf_components]
 
         def log_likelihood(p):
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll_unbinned(p, len_obs, s_probs, b_probs, compute_rates_func)
+            return -calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
     else:
         def log_likelihood(p):
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll(p, data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
+            return -calc_nll(p, data, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
 
     param_names = [f'p{i+1}' for i in range(n_params)]
     sampler = ultranest.ReactiveNestedSampler(param_names, log_likelihood, prior_transform, log_dir=None)
@@ -689,7 +701,8 @@ def unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, c
     result = sampler.run(**run_kwargs)
     return -result['maximum_likelihood']['logl'], result['maximum_likelihood']['point']
 
-def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=1,
+def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, bounds_list, compute_rates_func, verbose=1,
+                                 pdf_components=None,
                                  likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
                                  bounds_func=None, constraints=None):
     """
@@ -709,12 +722,16 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, S_model, B_m
         The index of the parameter being fixed.
     n_params : int
         Total number of parameters in the model.
-    data, S_model, B_model, bounds_list : various
-        Dataset, models, and boundary constraints.
+    data, bounds_list : various
+        Dataset (binned counts of any shape, or unbinned events) and boundary
+        constraints.
     compute_rates_func : callable
         User-provided mapping function matching parameters to physical expectations.
     verbose : int
         Verbosity level.
+    pdf_components : list of callable, optional
+        Probability density functions, one per model component. Required
+        when `likelihood_type="unbinned"`; unused for `"binned"`.
     likelihood_type, S_sigma2, B_sigma2, use_finite_mc : various
         Likelihood formulation configurations.
     bounds_func : callable, optional
@@ -749,19 +766,17 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, S_model, B_m
         p = np.zeros(n_params)
         p[fix_idx] = test_val
         if likelihood_type == "unbinned":
-            s_probs = S_model(data) if len(data) > 0 else np.array([])
-            b_probs = B_model(data) if len(data) > 0 else np.array([])
-            return calc_nll_unbinned(p, len(data), s_probs, b_probs, compute_rates_func), p
+            probs = [pdf(data) if len(data) > 0 else np.array([]) for pdf in pdf_components]
+            return calc_nll_unbinned(p, len(data), probs, compute_rates_func), p
         else:
-            return calc_nll(p, data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func), p
+            return calc_nll(p, data, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func), p
 
     def prior_transform(cube):
         return np.array([cube[i] * (free_bounds[i][1] - free_bounds[i][0]) + free_bounds[i][0] for i in range(len(free_bounds))])
 
     if likelihood_type == "unbinned":
         len_obs = len(data)
-        s_probs = S_model(data) if len_obs > 0 else np.array([])
-        b_probs = B_model(data) if len_obs > 0 else np.array([])
+        probs = [pdf(data) if len_obs > 0 else np.array([]) for pdf in pdf_components]
 
         def log_likelihood(free_p):
             p = np.zeros(n_params)
@@ -770,7 +785,7 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, S_model, B_m
                 p[idx] = free_val
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll_unbinned(p, len_obs, s_probs, b_probs, compute_rates_func)
+            return -calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
     else:
         def log_likelihood(free_p):
             p = np.zeros(n_params)
@@ -779,7 +794,7 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, S_model, B_m
                 p[idx] = free_val
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll(p, data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
+            return -calc_nll(p, data, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
 
     param_names = [f'f{i+1}' for i in range(len(free_bounds))]
     sampler = ultranest.ReactiveNestedSampler(param_names, log_likelihood, prior_transform, log_dir=None)
@@ -793,7 +808,8 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, S_model, B_m
 
     return -result['maximum_likelihood']['logl'], best_p
 
-def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=1,
+def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, verbose=1,
+                                 pdf_components=None,
                                  likelihood_type="binned", S_sigma2=None, B_sigma2=None, use_finite_mc=False,
                                  bounds_func=None, constraints=None):
     """
@@ -811,12 +827,16 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
         The indices of the parameters being fixed.
     n_params : int
         Total number of parameters in the model.
-    data, S_model, B_model, bounds_list : various
-        Dataset, models, and boundary constraints.
+    data, bounds_list : various
+        Dataset (binned counts of any shape, or unbinned events) and boundary
+        constraints.
     compute_rates_func : callable
         User-provided mapping function matching parameters to physical expectations.
     verbose : int
         Verbosity level.
+    pdf_components : list of callable, optional
+        Probability density functions, one per model component. Required
+        when `likelihood_type="unbinned"`; unused for `"binned"`.
     likelihood_type, S_sigma2, B_sigma2, use_finite_mc : various
         Likelihood formulation configurations.
     bounds_func : callable, optional
@@ -850,19 +870,17 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
         p[fix_A] = test_vA
         p[fix_B] = test_vB
         if likelihood_type == "unbinned":
-            s_probs = S_model(data) if len(data) > 0 else np.array([])
-            b_probs = B_model(data) if len(data) > 0 else np.array([])
-            return calc_nll_unbinned(p, len(data), s_probs, b_probs, compute_rates_func), p
+            probs = [pdf(data) if len(data) > 0 else np.array([]) for pdf in pdf_components]
+            return calc_nll_unbinned(p, len(data), probs, compute_rates_func), p
         else:
-            return calc_nll(p, data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func), p
+            return calc_nll(p, data, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func), p
 
     def prior_transform(cube):
         return np.array([cube[i] * (free_bounds[i][1] - free_bounds[i][0]) + free_bounds[i][0] for i in range(len(free_bounds))])
 
     if likelihood_type == "unbinned":
         len_obs = len(data)
-        s_probs = S_model(data) if len_obs > 0 else np.array([])
-        b_probs = B_model(data) if len_obs > 0 else np.array([])
+        probs = [pdf(data) if len_obs > 0 else np.array([]) for pdf in pdf_components]
 
         def log_likelihood(free_p):
             p = np.zeros(n_params)
@@ -872,7 +890,7 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
                 p[idx] = free_val
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll_unbinned(p, len_obs, s_probs, b_probs, compute_rates_func)
+            return -calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
     else:
         def log_likelihood(free_p):
             p = np.zeros(n_params)
@@ -882,7 +900,7 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
                 p[idx] = free_val
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll(p, data, S_model, B_model, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
+            return -calc_nll(p, data, S_sigma2, B_sigma2, use_finite_mc, compute_rates_func)
 
     param_names = [f'f{i+1}' for i in range(len(free_bounds))]
     sampler = ultranest.ReactiveNestedSampler(param_names, log_likelihood, prior_transform, log_dir=None)
