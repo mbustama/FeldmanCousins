@@ -230,8 +230,6 @@ The script will prompt you with questions regarding your likelihood type, number
 
 ## Quick Start Guide
 
-> **Note:** The examples below use the API introduced in v0.10.0 (this branch), which is not yet published to PyPI as of this writing -- `pip install PyFeldmanCousins` currently installs an older release with a different `compute_fc_intervals` signature (`S_model`/`B_model` instead of `pdf_components`). If these examples raise `TypeError: compute_fc_intervals() missing ... 'S_model' and 'B_model'` or `got an unexpected keyword argument 'pdf_components'`, your installed version predates this change -- install this branch directly instead (clone the repository, check out this branch, and run `pip install -e .` from the repository root; see "Option 2" under Installation above) until a new PyPI release ships.
-
 Because PyFC evaluates abstract $N$-dimensional grids, you **must** supply Python functions instructing the framework how to mathematically map a coordinate in parameter space to your physical expectations. 
 
 *(See the `examples/pyfc_quickstart_tutorial.ipynb` notebook in the repository for a full, runnable end-to-end walkthrough of both models below.)*

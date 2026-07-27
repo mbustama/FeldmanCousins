@@ -1,16 +1,6 @@
 Quick Start Guide
 =================
 
-.. important::
-   The examples below use the API introduced in v0.10.0 (this branch), which is not yet
-   published to PyPI as of this writing -- ``pip install PyFeldmanCousins`` currently installs
-   an older release with a different ``compute_fc_intervals`` signature (``S_model``/
-   ``B_model`` instead of ``pdf_components``). If these examples raise ``TypeError:
-   compute_fc_intervals() missing ... 'S_model' and 'B_model'`` or ``got an unexpected keyword
-   argument 'pdf_components'``, your installed version predates this change -- install this
-   branch directly instead (see :doc:`installation`'s "Local Installation from Source" option)
-   until a new PyPI release ships.
-
 .. note::
    Because PyFC evaluates abstract :math:`N`-dimensional grids, you **must** supply Python functions instructing the framework how to mathematically map a coordinate in parameter space to your physical expectations.
 
