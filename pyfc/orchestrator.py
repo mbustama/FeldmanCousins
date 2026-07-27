@@ -243,7 +243,7 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
                          pdf_components=None,
                          cl=None, n_toys=2000, strategy="scipy", num_cores=None, verbose=1,
                          adaptive_toys=True, toy_batch_size=200,
-                         sparsify_grid=True, warm_start=True,
+                         sparsify_grid=False, warm_start=True,
                          likelihood_type="binned", S_mc_pool=None, B_mc_pool=None,
                          output_file=None, save_log=False, save_directory="output/example_fc_output",
                          use_finite_mc_correction_binned=True, S_sumw2=None, B_sumw2=None,
@@ -309,8 +309,19 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
         Number of parallel threads for toy generation.
     verbose : int, optional
         0 = Silent, 1 = Normal, 2 = Debug.
-    adaptive_toys, toy_batch_size, sparsify_grid, warm_start : bool/int
+    adaptive_toys, toy_batch_size, warm_start : bool/int
         Algorithmic enhancements to reduce execution time.
+    sparsify_grid : bool, optional
+        For 2D scans, coarsely samples the grid and interpolates the
+        t_critical surface, then refines only cells adjacent to the
+        interpolated accept/reject boundary, instead of evaluating every
+        cell. Defaults to False. Known limitation: refinement is a single,
+        non-iterative pass with a 1-cell-wide halo around ~5-per-axis
+        coarse nodes, so for grids much larger than ~20x20 per axis it
+        under-counts the true accepted region (deep interior/exterior cells
+        far from any coarse node are never evaluated and are force-excluded
+        as a result). See the comment above the "Sparsification Array
+        Tracing" block in this function's body for details.
     likelihood_type : str
         "binned" or "unbinned".
     S_mc_pool, B_mc_pool : array_like, optional
@@ -647,7 +658,16 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
 
             # Helper function to evaluate toys for a specific (i, j) 2D coordinate
             def eval_2d_point(i, j, pair_name=pair_name, gridA=gridA, gridB=gridB, fix_A=fix_A, fix_B=fix_B, cond_grid_points=cond_grid_points):
-                if not np.isnan(results[f"2d_t_critical_{pair_name}"][cl[0]][i, j]):
+                # Keyed off 2d_t_data, not 2d_t_critical: the coarse-to-fine
+                # interpolation step below fills in 2d_t_critical for every cell
+                # (coarse and refined alike) with an interpolated estimate, not a
+                # real toy-evaluated one. Checking 2d_t_critical here would make
+                # every refinement cell look "already done" and turn the boundary
+                # refinement pass into a silent no-op. 2d_t_data is only ever set
+                # by Step 1 below (an exact conditional fit), so its NaN-ness
+                # accurately reflects whether this point has actually been
+                # evaluated, regardless of the interpolation pass.
+                if not np.isnan(results[f"2d_t_data_{pair_name}"][i, j]):
                     return
 
                 p_A, p_B = gridA[i], gridB[j]
@@ -706,8 +726,28 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
             # To dramatically reduce computation time in 2D grids, this algorithm:
             # 1. Evaluates a coarse subset of grid nodes.
             # 2. Uses Bivariate Spline interpolation to estimate the t_critical surface.
-            # 3. Dynamically traces and evaluates only the specific high-resolution nodes 
+            # 3. Dynamically traces and evaluates only the specific high-resolution nodes
             #    where the condition (t_data <= t_critical) transitions state (the contour boundary).
+            #
+            # Known limitation (sparsify_grid=True, hence why it defaults to False):
+            # eval_2d_point's memoization is keyed off 2d_t_data, which is only ever
+            # set by an actual conditional fit -- so the refinement pass below
+            # genuinely re-evaluates boundary cells (this used to be a silent no-op
+            # when the guard was keyed off 2d_t_critical instead, which the coarse-
+            # to-fine interpolation below fills in for every cell regardless of
+            # whether it was really evaluated). However, boundary detection ("is
+            # this coarse cell adjacent to a rejected cell") and the resulting
+            # refinement halo are still only a single, non-iterative, 1-cell-wide
+            # ring around the ~5-per-axis coarse nodes. For grids much larger than
+            # roughly 20x20 per axis, that halo never reaches deep interior/exterior
+            # cells far from any coarse node: their 2d_t_data stays NaN and they are
+            # force-excluded from the accepted region regardless of their true
+            # status (NaN comparisons are always False). This under-counts the true
+            # accepted region at exactly the grid sizes this feature is meant for
+            # (see docs/dev/FIXES_BRIEF_dev-no-templates.md for a worked example).
+            # Making this reliable at scale needs an iterative refine loop and/or an
+            # interpolated (not NaN) t_data estimate to trace the true contour --
+            # tracked as follow-up work, not addressed here.
             if sparsify_grid:
                 step_A = max(1, len(gridA) // 5)
                 step_B = max(1, len(gridB) // 5)

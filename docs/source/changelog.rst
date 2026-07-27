@@ -185,6 +185,35 @@ Fixed
   minutes with ``ultranest`` actually installed -- as far as could be
   determined, this strategy combination had never been exercised
   end-to-end before.
+* **``sparsify_grid`` defaulted to ``True`` in ``compute_fc_intervals``'s
+  own Python keyword default, while ``config.py``'s CLI/JSON default and
+  every doc already documented ``False`` as *the* default.** Anyone
+  calling ``compute_fc_intervals`` directly without an explicit
+  ``sparsify_grid`` argument silently got the (buggy, see below) ``True``
+  behavior. Unified to ``False`` everywhere, including
+  ``generate_config.py``'s interactive wizard, which independently
+  defaulted to ``"y"``.
+* **``sparsify_grid=True``'s 2D boundary-refinement pass was a complete
+  no-op.** ``eval_2d_point``'s memoization guard checked
+  ``2d_t_critical`` for ``NaN``-ness to decide whether a cell had already
+  been evaluated, but the coarse-to-fine ``RectBivariateSpline``
+  interpolation step fills in ``2d_t_critical`` for *every* cell (real or
+  not) before the refinement pass runs -- so the guard always fired, and
+  every non-coarse cell's ``2d_t_data`` stayed ``NaN`` forever. Since
+  ``accepted = t_data <= t_critical`` is always ``False`` against
+  ``NaN``, this silently excluded the vast majority of the grid from the
+  accepted region regardless of its true classification (confirmed by
+  direct reproduction: 220/256 cells force-excluded on a 16x16 grid,
+  accepted count 8/256 instead of the true, much larger region). Fixed by
+  keying the guard off ``2d_t_data`` instead, which is only ever set by
+  an actual conditional fit and untouched by interpolation. New
+  regression tests in ``tests/test_sparsify_grid.py``. **Known remaining
+  limitation:** boundary refinement is still a single, non-iterative pass
+  with a 1-cell-wide halo around ~5-per-axis coarse nodes, so for grids
+  much larger than ~20x20 per axis (the scale this feature is meant for)
+  it still under-counts the true accepted region -- see the caveat now
+  documented in ``compute_fc_intervals``'s docstring and README's
+  "Contour Edge Tracing" section. Tracked as follow-up work.
 
 Added
 ~~~~~

@@ -406,6 +406,8 @@ Calculating $N_{\text{toys}}$ for every node in a $100 \times 100$ 2D grid is co
 4. Locates the decision boundary (the "edge" of the contour where $t_{\text{data}} \approx t_{\text{critical}}$).
 5. Evaluates exact data fits and expensive MC toys on the specific high-resolution cells lying strictly on this perimeter to perfect the contour edge, drastically cutting runtime.
 
+**Known limitation:** this defaults to `False` because step 4/5's boundary refinement is currently a single, non-iterative pass with a 1-cell-wide halo around the sparse coarse nodes. For grids much larger than roughly 20x20 per axis (i.e. the exact regime this feature targets), that halo does not reach deep interior/exterior cells far from any coarse node -- those cells are never evaluated and are force-excluded from the accepted region regardless of their true status. Opt in with care and verify against a `sparsify_grid=False` reference run on a representative grid size before trusting the result.
+
 ### Handling Joint/Simplex-Constrained Parameters
 
 `bounds_list` (built automatically from your `grids`) only expresses **independent per-parameter box constraints** -- `param_i` must lie in `[lo_i, hi_i]`, with no notion of a relationship between two different parameters. Neither L-BFGS-B/SLSQP (SciPy) nor the nested-sampling prior transform (UltraNest) have any native concept of a *joint* constraint like a simplex (`a + b <= 1`) or a sphere (`a^2 + b^2 <= 1`).

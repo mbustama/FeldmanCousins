@@ -334,7 +334,7 @@ def main():
 
     config["sparsify_grid"] = get_input(
         "16. Enable Grid Sparsification (y/n)?",
-        default_val="y",
+        default_val="n",
         cast_func=parse_bool
     )
 
