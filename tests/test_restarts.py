@@ -137,9 +137,18 @@ def test_minimize_with_restarts_n_restarts_1_backward_compatible_call_shape():
 
 
 # --- Integration: neighbor warm-starting is actually exercised by the orchestrator ---
+# Fixed template arrays are module-level constants, referenced via closure
+# from the @njit compute_rates_func below (no more S_model/B_model arguments
+# -- see the "BREAKING CHANGES" CHANGELOG entry). These two mocked tests
+# patch out the actual fit functions, so compute_rates_func is never called
+# for real here -- it only needs to be a valid callable reference.
+_S_TEMPLATE_2P = np.array([1.0])
+_B_TEMPLATE_2P = np.array([1.0])
+
+
 @njit(fastmath=True, nogil=True)
-def _simple_2param_rate_func(params, S_template, B_template, S_sigma2, B_sigma2):
-    mu = params[0] * S_template + params[1] * B_template + 1.0
+def _simple_2param_rate_func(params, S_sigma2, B_sigma2):
+    mu = params[0] * _S_TEMPLATE_2P + params[1] * _B_TEMPLATE_2P + 1.0
     return mu, S_sigma2
 
 
@@ -152,7 +161,7 @@ def test_orchestrator_neighbor_seeding_passes_previous_point_as_seed():
     """
     calls_by_fix_idx = {0: [], 1: []}
 
-    def fake_conditional_fit_1d_scipy(test_val, fix_idx, n_params_, data, S_model, B_model, bounds_list,
+    def fake_conditional_fit_1d_scipy(test_val, fix_idx, n_params_, data, bounds_list,
                                        compute_rates_func, seed=None, **kwargs):
         calls_by_fix_idx[fix_idx].append({"seed": seed, "n_restarts": kwargs.get("n_restarts")})
         p = np.zeros(n_params_)
@@ -166,15 +175,13 @@ def test_orchestrator_neighbor_seeding_passes_previous_point_as_seed():
         return 0.0, np.array([0.5, 0.5])
 
     N_data = np.array([5.0])
-    S_template = np.array([1.0])
-    B_template = np.array([1.0])
-    s2 = np.zeros_like(S_template)
+    s2 = np.zeros_like(_S_TEMPLATE_2P)
     grids = [np.linspace(0.0, 1.0, 4), np.linspace(0.0, 1.0, 4)]
 
     with patch("pyfc.orchestrator.conditional_fit_1d_scipy", side_effect=fake_conditional_fit_1d_scipy), \
          patch("pyfc.orchestrator.unconditional_fit_scipy", side_effect=fake_unconditional_fit_scipy):
         compute_fc_intervals(
-            N_data, S_template, B_template, grids,
+            data=N_data, grids=grids,
             compute_rates_func=_simple_2param_rate_func,
             cl=[0.90], n_toys=1, strategy="scipy", num_cores=1, verbose=0,
             sparsify_grid=False, warm_start=False,
@@ -196,7 +203,7 @@ def test_orchestrator_neighbor_seeding_disabled_via_flag():
     """neighbor_seeding=False must restore the pre-FIX-4 behavior: always seed=None."""
     calls = []
 
-    def fake_conditional_fit_1d_scipy(test_val, fix_idx, n_params_, data, S_model, B_model, bounds_list,
+    def fake_conditional_fit_1d_scipy(test_val, fix_idx, n_params_, data, bounds_list,
                                        compute_rates_func, seed=None, **kwargs):
         calls.append({"seed": seed, "n_restarts": kwargs.get("n_restarts")})
         p = np.zeros(n_params_)
@@ -212,13 +219,13 @@ def test_orchestrator_neighbor_seeding_disabled_via_flag():
     grids = [np.linspace(0.0, 1.0, 4)]
 
     @njit(fastmath=True, nogil=True)
-    def rate_func_1p(params, S_template, B_template, S_sigma2, B_sigma2):
+    def rate_func_1p(params, S_sigma2, B_sigma2):
         return params[0] * S_template + 1.0, S_sigma2
 
     with patch("pyfc.orchestrator.conditional_fit_1d_scipy", side_effect=fake_conditional_fit_1d_scipy), \
          patch("pyfc.orchestrator.unconditional_fit_scipy", side_effect=fake_unconditional_fit_scipy):
         compute_fc_intervals(
-            N_data, S_template, S_template, grids,
+            data=N_data, grids=grids,
             compute_rates_func=rate_func_1p,
             cl=[0.90], n_toys=1, strategy="scipy", num_cores=1, verbose=0,
             sparsify_grid=False, warm_start=False,
@@ -242,8 +249,8 @@ def test_end_to_end_with_and_without_neighbor_seeding_no_plateau_or_regression()
     s2_B = np.zeros_like(B_template)
 
     @njit(fastmath=True, nogil=True)
-    def rate_func(params, S_t, B_t, S_s2, B_s2):
-        mu = params[0] * S_t + params[1] + params[2] * B_t
+    def rate_func(params, S_s2, B_s2):
+        mu = params[0] * S_template + params[1] + params[2] * B_template
         return mu, S_s2
 
     np.random.seed(7)
@@ -253,7 +260,7 @@ def test_end_to_end_with_and_without_neighbor_seeding_no_plateau_or_regression()
     def run(neighbor_seeding):
         t0 = time.perf_counter()
         results, _ = compute_fc_intervals(
-            N_data, S_template, B_template, grids,
+            data=N_data, grids=grids,
             compute_rates_func=rate_func,
             cl=[0.90], n_toys=10, strategy="scipy", num_cores=1, verbose=0,
             sparsify_grid=False, warm_start=False,

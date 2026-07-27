@@ -50,7 +50,7 @@ def _old_binned_nll_physical(mu, N_obs, S_sigma2_arr, B_sigma2_arr, use_finite_m
 
 
 @njit(fastmath=True, nogil=True)
-def _linear_rate_func(params, S_template, B_template, S_sigma2, B_sigma2):
+def _linear_rate_func(params, S_sigma2, B_sigma2):
     """mu = params[0] (single bin), used to sweep a rate through mu=0."""
     mu = np.array([params[0]])
     sigma2 = np.array([0.0])
@@ -61,21 +61,20 @@ def test_binned_calc_nll_identical_for_physical_bins():
     """For mu_i > 0 in all bins, output must match the pre-fix formula exactly."""
     N_obs = np.array([3.0, 0.0, 7.0])
     S_template = np.array([1.0, 1.0, 1.0])
-    B_template = np.array([0.0, 0.0, 0.0])
     S_sigma2 = np.zeros_like(S_template)
-    B_sigma2 = np.zeros_like(B_template)
+    B_sigma2 = np.zeros_like(S_template)
 
     @njit(fastmath=True, nogil=True)
-    def rate_func(params, S_t, B_t, S_s2, B_s2):
-        mu = params[0] * S_t + 2.0
+    def rate_func(params, S_s2, B_s2):
+        mu = params[0] * S_template + 2.0
         return mu, S_s2
 
     for use_finite_mc in (False, True):
         params = np.array([3.0])
-        mu, _ = rate_func(params, S_template, B_template, S_sigma2, B_sigma2)
+        mu, _ = rate_func(params, S_sigma2, B_sigma2)
         assert np.all(mu > 0)
 
-        got = calc_nll(params, N_obs, S_template, B_template, S_sigma2, B_sigma2,
+        got = calc_nll(params, N_obs, S_sigma2, B_sigma2,
                         use_finite_mc, rate_func)
         expected = _old_binned_nll_physical(mu, N_obs, S_sigma2, B_sigma2, use_finite_mc)
         assert got == pytest.approx(expected, rel=1e-12, abs=1e-12)
@@ -88,16 +87,14 @@ def test_binned_calc_nll_smooth_through_unphysical_region():
     plateau at a constant value.
     """
     N_obs = np.array([5.0])
-    S_template = np.array([1.0])
-    B_template = np.array([0.0])
-    S_sigma2 = np.zeros_like(S_template)
-    B_sigma2 = np.zeros_like(B_template)
+    S_sigma2 = np.zeros(1)
+    B_sigma2 = np.zeros(1)
 
     xs = np.linspace(0.5, -3.0, 25)  # crosses mu=0 partway through
     nlls = []
     for x in xs:
         params = np.array([x])
-        nll = calc_nll(params, N_obs, S_template, B_template, S_sigma2, B_sigma2,
+        nll = calc_nll(params, N_obs, S_sigma2, B_sigma2,
                         False, _linear_rate_func)
         nlls.append(nll)
         assert np.isfinite(nll)
@@ -118,18 +115,16 @@ def test_binned_calc_nll_no_early_return_preserves_other_bins():
     accumulated from other (physical) bins -- i.e. no early return.
     """
     N_obs = np.array([5.0, 5.0])
-    S_template = np.array([1.0, 1.0])
-    B_template = np.array([0.0, 0.0])
-    S_sigma2 = np.zeros_like(S_template)
-    B_sigma2 = np.zeros_like(B_template)
+    S_sigma2 = np.zeros(2)
+    B_sigma2 = np.zeros(2)
 
     @njit(fastmath=True, nogil=True)
-    def rate_func(params, S_t, B_t, S_s2, B_s2):
+    def rate_func(params, S_s2, B_s2):
         # bin 0 physical, bin 1 unphysical
         mu = np.array([3.0, -1.0])
         return mu, S_s2
 
-    nll = calc_nll(np.array([0.0]), N_obs, S_template, B_template, S_sigma2, B_sigma2,
+    nll = calc_nll(np.array([0.0]), N_obs, S_sigma2, B_sigma2,
                     False, rate_func)
     # physical bin-0 contribution alone
     bin0_only = 2.0 * (3.0 - 5.0 + 5.0 * math.log(5.0 / 3.0))
@@ -139,7 +134,8 @@ def test_binned_calc_nll_no_early_return_preserves_other_bins():
 
 # --- Unbinned tests ---
 def test_unbinned_calc_nll_identical_for_physical_events():
-    def rate_func(params, s_probs, b_probs):
+    def rate_func(params, probs):
+        s_probs, b_probs = probs[0], probs[1]
         p_events = params[0] * s_probs + params[1] * b_probs
         return params[0] + params[1], p_events
 
@@ -147,23 +143,23 @@ def test_unbinned_calc_nll_identical_for_physical_events():
     b_probs = np.array([0.1, 0.3, 0.05])
     params = np.array([2.0, 1.0])
 
-    expected_total, p_events = rate_func(params, s_probs, b_probs)
+    expected_total, p_events = rate_func(params, [s_probs, b_probs])
     assert np.all(p_events > 0)
 
-    got = calc_nll_unbinned(params, len(s_probs), s_probs, b_probs, rate_func)
+    got = calc_nll_unbinned(params, len(s_probs), [s_probs, b_probs], rate_func)
     expected = expected_total - np.sum(np.log(p_events))
     assert got == pytest.approx(expected, rel=1e-12, abs=1e-12)
 
 
 def test_unbinned_calc_nll_smooth_through_unphysical_region():
-    def rate_func(params, s_probs, b_probs):
+    def rate_func(params, probs):
         # Single event whose density is exactly params[0]
         return 5.0, np.array([params[0]])
 
     xs = np.linspace(0.5, -3.0, 25)
     nlls = []
     for x in xs:
-        nll = calc_nll_unbinned(np.array([x]), 1, np.array([1.0]), np.array([1.0]), rate_func)
+        nll = calc_nll_unbinned(np.array([x]), 1, [np.array([1.0]), np.array([1.0])], rate_func)
         nlls.append(nll)
         assert np.isfinite(nll)
 
@@ -179,10 +175,10 @@ def test_unbinned_calc_nll_elementwise_not_any_collapsed():
     Two independent unphysical events should each contribute according to how
     far below the floor they are, not be collapsed to a single flat constant.
     """
-    def rate_func(params, s_probs, b_probs):
+    def rate_func(params, probs):
         return 5.0, np.array([params[0], params[1]])
 
-    nll_a = calc_nll_unbinned(np.array([-0.1, -0.1]), 2, np.array([1.0, 1.0]), np.array([1.0, 1.0]), rate_func)
-    nll_b = calc_nll_unbinned(np.array([-0.1, -2.0]), 2, np.array([1.0, 1.0]), np.array([1.0, 1.0]), rate_func)
+    nll_a = calc_nll_unbinned(np.array([-0.1, -0.1]), 2, [np.array([1.0, 1.0]), np.array([1.0, 1.0])], rate_func)
+    nll_b = calc_nll_unbinned(np.array([-0.1, -2.0]), 2, [np.array([1.0, 1.0]), np.array([1.0, 1.0])], rate_func)
     assert nll_a != nll_b
     assert nll_b > nll_a  # second event further into unphysical territory -> larger penalty

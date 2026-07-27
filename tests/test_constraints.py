@@ -70,7 +70,7 @@ def test_project_linear_constraint_nonlinear_substitutes_fixed_value():
 
 # --- FIX2 vs FIX3 agreement (overlapping case) ---
 @njit(fastmath=True, nogil=True)
-def _two_param_rate_func(params, S_template, B_template, S_sigma2, B_sigma2):
+def _two_param_rate_func(params, S_sigma2, B_sigma2):
     mu = np.array([10.0 * params[0] + 10.0 * params[1] + 1.0])
     return mu, S_sigma2
 
@@ -83,19 +83,17 @@ def test_bounds_func_and_constraints_agree_on_overlapping_case():
     """
     bounds_list = [(0.0, 1.0), (0.0, 1.0)]
     N_obs = np.array([100.0])
-    S_t = np.array([0.0])
-    B_t = np.array([0.0])
     s2 = np.array([0.0])
     fix_val = 0.7
 
     _, best_p_bf = conditional_fit_1d_scipy(
-        fix_val, 0, 2, N_obs, S_t, B_t, bounds_list, _two_param_rate_func,
+        fix_val, 0, 2, N_obs, bounds_list, _two_param_rate_func,
         S_sigma2=s2, B_sigma2=s2, bounds_func=simplex_bounds_func,
     )
 
     full_constraint = optimize.LinearConstraint(np.array([[1.0, 1.0]]), -np.inf, 1.0)
     _, best_p_c = conditional_fit_1d_scipy(
-        fix_val, 0, 2, N_obs, S_t, B_t, bounds_list, _two_param_rate_func,
+        fix_val, 0, 2, N_obs, bounds_list, _two_param_rate_func,
         S_sigma2=s2, B_sigma2=s2, constraints=[full_constraint],
     )
 
@@ -112,19 +110,17 @@ def test_constraints_handle_two_simultaneously_free_nuisance_params():
     """
     bounds_list = [(0.0, 1.0), (0.0, 1.0), (0.0, 5.0)]
     N_obs = np.array([100.0])
-    S_t = np.array([0.0])
-    B_t = np.array([0.0])
     s2 = np.array([0.0])
 
     @njit(fastmath=True, nogil=True)
-    def rate_func(params, S_template, B_template, S_sigma2, B_sigma2):
+    def rate_func(params, S_sigma2, B_sigma2):
         # Large N pulls both p0 and p1 toward their upper bounds independently.
         mu = np.array([10.0 * params[0] + 10.0 * params[1] + params[2] + 1.0])
         return mu, S_sigma2
 
     full_constraint = optimize.LinearConstraint(np.array([[1.0, 1.0, 0.0]]), -np.inf, 1.0)
     cond_nll, best_p = conditional_fit_1d_scipy(
-        2.5, 2, 3, N_obs, S_t, B_t, bounds_list, rate_func,
+        2.5, 2, 3, N_obs, bounds_list, rate_func,
         S_sigma2=s2, B_sigma2=s2, constraints=[full_constraint],
     )
 
@@ -145,15 +141,14 @@ def test_method_defaults_to_lbfgsb_without_constraints():
     bounds_list = [(0.0, 1.0)]
     N_obs = np.array([5.0])
     S_t = np.array([1.0])
-    B_t = np.array([0.0])
     s2 = np.array([0.0])
 
     @njit(fastmath=True, nogil=True)
-    def rate_func(params, S_template, B_template, S_sigma2, B_sigma2):
-        return params[0] * S_template + 1.0, S_sigma2
+    def rate_func(params, S_sigma2, B_sigma2):
+        return params[0] * S_t + 1.0, S_sigma2
 
     with patch("pyfc.optimizers.optimize.minimize", side_effect=spy):
-        unconditional_fit_scipy(N_obs, S_t, B_t, 1, bounds_list, rate_func, S_sigma2=s2, B_sigma2=s2)
+        unconditional_fit_scipy(N_obs, 1, bounds_list, rate_func, S_sigma2=s2, B_sigma2=s2)
 
     assert captured["method"] == "L-BFGS-B"
     assert "constraints" not in captured
@@ -169,13 +164,11 @@ def test_method_switches_to_slsqp_with_constraints():
 
     bounds_list = [(0.0, 1.0), (0.0, 1.0)]
     N_obs = np.array([10.0])
-    S_t = np.array([0.0])
-    B_t = np.array([0.0])
     s2 = np.array([0.0])
     full_constraint = optimize.LinearConstraint(np.array([[1.0, 1.0]]), -np.inf, 1.0)
 
     with patch("pyfc.optimizers.optimize.minimize", side_effect=spy):
-        unconditional_fit_scipy(N_obs, S_t, B_t, 2, bounds_list, _two_param_rate_func,
+        unconditional_fit_scipy(N_obs, 2, bounds_list, _two_param_rate_func,
                                  S_sigma2=s2, B_sigma2=s2, constraints=[full_constraint])
 
     assert captured["method"] == "SLSQP"
@@ -193,15 +186,14 @@ def test_scipy_method_override_takes_precedence():
     bounds_list = [(0.0, 1.0)]
     N_obs = np.array([5.0])
     S_t = np.array([1.0])
-    B_t = np.array([0.0])
     s2 = np.array([0.0])
 
     @njit(fastmath=True, nogil=True)
-    def rate_func(params, S_template, B_template, S_sigma2, B_sigma2):
-        return params[0] * S_template + 1.0, S_sigma2
+    def rate_func(params, S_sigma2, B_sigma2):
+        return params[0] * S_t + 1.0, S_sigma2
 
     with patch("pyfc.optimizers.optimize.minimize", side_effect=spy):
-        unconditional_fit_scipy(N_obs, S_t, B_t, 1, bounds_list, rate_func,
+        unconditional_fit_scipy(N_obs, 1, bounds_list, rate_func,
                                  S_sigma2=s2, B_sigma2=s2, scipy_method="trust-constr")
 
     assert captured["method"] == "trust-constr"
@@ -225,20 +217,18 @@ def test_constraints_satisfied_empty_is_true():
 def test_benchmark_unconstrained_vs_constrained_overhead():
     bounds_list = [(0.0, 1.0), (0.0, 1.0)]
     N_obs = np.array([100.0])
-    S_t = np.array([0.0])
-    B_t = np.array([0.0])
     s2 = np.array([0.0])
     n_reps = 20
 
     t0 = time.perf_counter()
     for _ in range(n_reps):
-        unconditional_fit_scipy(N_obs, S_t, B_t, 2, bounds_list, _two_param_rate_func, S_sigma2=s2, B_sigma2=s2)
+        unconditional_fit_scipy(N_obs, 2, bounds_list, _two_param_rate_func, S_sigma2=s2, B_sigma2=s2)
     t_unconstrained = (time.perf_counter() - t0) / n_reps
 
     full_constraint = optimize.LinearConstraint(np.array([[1.0, 1.0]]), -np.inf, 1.0)
     t0 = time.perf_counter()
     for _ in range(n_reps):
-        unconditional_fit_scipy(N_obs, S_t, B_t, 2, bounds_list, _two_param_rate_func, S_sigma2=s2, B_sigma2=s2,
+        unconditional_fit_scipy(N_obs, 2, bounds_list, _two_param_rate_func, S_sigma2=s2, B_sigma2=s2,
                                  constraints=[full_constraint])
     t_constrained = (time.perf_counter() - t0) / n_reps
 

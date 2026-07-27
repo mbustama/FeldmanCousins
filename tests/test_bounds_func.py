@@ -33,7 +33,7 @@ def simplex_bounds_func(fixed_values, free_indices, default_bounds_list):
 
 
 @njit(fastmath=True, nogil=True)
-def _two_param_rate_func(params, S_template, B_template, S_sigma2, B_sigma2):
+def _two_param_rate_func(params, S_sigma2, B_sigma2):
     # A single bin whose rate depends on both f_e and f_mu (params[0], params[1]).
     mu = np.array([10.0 * params[0] + 10.0 * params[1] + 1.0])
     return mu, S_sigma2
@@ -44,12 +44,10 @@ def test_bounds_func_none_is_backward_compatible():
     """Default behavior (bounds_func=None) must be unaffected."""
     bounds_list = [(0.0, 1.0), (0.0, 1.0)]
     N_obs = np.array([15.0])
-    S_t = np.array([0.0])
-    B_t = np.array([0.0])
     s2 = np.array([0.0])
 
     cond_nll, best_p = conditional_fit_1d_scipy(
-        0.9, 0, 2, N_obs, S_t, B_t, bounds_list, _two_param_rate_func,
+        0.9, 0, 2, N_obs, bounds_list, _two_param_rate_func,
         S_sigma2=s2, B_sigma2=s2,
     )
     # Free param (f_mu, index 1) is optimized within the *unmodified* [0, 1] box.
@@ -65,13 +63,11 @@ def test_bounds_func_1d_tightens_free_bound():
     """
     bounds_list = [(0.0, 1.0), (0.0, 1.0)]
     N_obs = np.array([100.0])  # large N pulls the fit toward larger mu (larger f_mu)
-    S_t = np.array([0.0])
-    B_t = np.array([0.0])
     s2 = np.array([0.0])
 
     fix_val = 0.7
     cond_nll, best_p = conditional_fit_1d_scipy(
-        fix_val, 0, 2, N_obs, S_t, B_t, bounds_list, _two_param_rate_func,
+        fix_val, 0, 2, N_obs, bounds_list, _two_param_rate_func,
         S_sigma2=s2, B_sigma2=s2, bounds_func=simplex_bounds_func,
     )
 
@@ -86,18 +82,16 @@ def test_bounds_func_2d_tightens_free_bound_symmetrically():
     """Same check via conditional_fit_2d_scipy with a 3rd unconstrained dummy param."""
     bounds_list = [(0.0, 1.0), (0.0, 1.0), (0.0, 5.0)]
     N_obs = np.array([100.0])
-    S_t = np.array([0.0])
-    B_t = np.array([0.0])
     s2 = np.array([0.0])
 
     @njit(fastmath=True, nogil=True)
-    def rate_func(params, S_template, B_template, S_sigma2, B_sigma2):
+    def rate_func(params, S_sigma2, B_sigma2):
         mu = np.array([10.0 * params[0] + 10.0 * params[1] + params[2] + 1.0])
         return mu, S_sigma2
 
     # Fix f_mu (index 1) at 0.6; f_e (index 0) is free and should be tightened to [0, 0.4].
     cond_nll, best_p = conditional_fit_2d_scipy(
-        0.6, 2.5, 1, 2, 3, N_obs, S_t, B_t, bounds_list, rate_func,
+        0.6, 2.5, 1, 2, 3, N_obs, bounds_list, rate_func,
         S_sigma2=s2, B_sigma2=s2, bounds_func=simplex_bounds_func,
     )
     assert best_p[1] == 0.6
@@ -109,12 +103,10 @@ def test_bounds_func_unconditional_noop_with_empty_fixed_values():
     """unconditional_fit_scipy calls bounds_func({}, ...); simplex_bounds_func is then a no-op."""
     bounds_list = [(0.0, 1.0), (0.0, 1.0)]
     N_obs = np.array([15.0])
-    S_t = np.array([0.0])
-    B_t = np.array([0.0])
     s2 = np.array([0.0])
 
     min_nll, best_params = unconditional_fit_scipy(
-        N_obs, S_t, B_t, 2, bounds_list, _two_param_rate_func,
+        N_obs, 2, bounds_list, _two_param_rate_func,
         S_sigma2=s2, B_sigma2=s2, bounds_func=simplex_bounds_func,
     )
     # No fixed values -> simplex_bounds_func returns the bounds_list unmodified,
@@ -137,12 +129,10 @@ def test_bounds_func_reproduces_plateau_trap_without_it():
     """
     bounds_list = [(0.0, 1.0), (0.0, 1.0)]
     N_obs = np.array([100.0])
-    S_t = np.array([0.0])
-    B_t = np.array([0.0])
     s2 = np.array([0.0])
 
     @njit(fastmath=True, nogil=True)
-    def hard_cutoff_rate_func(params, S_template, B_template, S_sigma2, B_sigma2):
+    def hard_cutoff_rate_func(params, S_sigma2, B_sigma2):
         if params[0] + params[1] > 1.0:
             return np.array([0.0]), S_sigma2  # hard-zeroed: unphysical, flat region
         mu = np.array([10.0 * params[0] + 10.0 * params[1] + 1.0])
@@ -150,7 +140,7 @@ def test_bounds_func_reproduces_plateau_trap_without_it():
 
     # bounds_func fixes the box itself so the optimizer never needs the cutoff.
     cond_nll, best_p = conditional_fit_1d_scipy(
-        0.7, 0, 2, N_obs, S_t, B_t, bounds_list, hard_cutoff_rate_func,
+        0.7, 0, 2, N_obs, bounds_list, hard_cutoff_rate_func,
         S_sigma2=s2, B_sigma2=s2, bounds_func=simplex_bounds_func,
     )
     assert best_p[1] <= 0.3 + 1e-9
