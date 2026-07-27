@@ -30,7 +30,8 @@ Interactive Instructions:
 - For list inputs (like Confidence Levels), provide values separated by commas 
   (e.g., 0.68, 0.90, 0.95).
 
-Date: July 24, 2026
+Created: v0.1.0 (July 24, 2026)
+Last modified: v0.9.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 

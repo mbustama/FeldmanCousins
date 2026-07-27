@@ -1,9 +1,13 @@
 """
 Feldman-Cousins Frequentist Analysis Framework
+
+Created: v0.1.0 (July 24, 2026)
+Last modified: v0.10.0
+Author: Mauricio Bustamante (mbustamante@gmail.com)
 """
 
-# Assuming the file is named orchestrator.py based on the previous code base
-# You can also expose the config generator if you want it easily accessible
+# Re-exported at the top level so `from pyfc import X` works without
+# knowing PyFC's internal module layout.
 from .generate_config import main as generate_config
 from .orchestrator import compute_fc_intervals
 from .plotting import generate_corner_plot

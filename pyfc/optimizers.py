@@ -44,7 +44,8 @@ Two purpose-built mechanisms exist instead, and can be used together:
 See the README section "Handling Joint/Simplex-Constrained Parameters" for a
 full worked example (a neutrino flavor-fraction fit with `f_e + f_mu <= 1`).
 
-Date: July 24, 2026
+Created: v0.1.0 (July 24, 2026)
+Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 

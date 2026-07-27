@@ -7,7 +7,8 @@ It implements expected rate calculations, standard Poisson and finite-Monte Carl
 (Poisson-Gamma mixture) likelihood evaluations, grid-based profile likelihood 
 optimizations, and parametric bootstrap pseudo-experiment (toy) generation.
 
-Date: July 24, 2026
+Created: v0.1.0 (July 24, 2026)
+Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 

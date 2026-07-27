@@ -13,7 +13,8 @@ This file specifically handles the execution when using continuous optimizers
 to either Thread or Process pools depending on Python's Global Interpreter Lock (GIL) 
 limitations for the requested likelihood type.
 
-Date: July 24, 2026
+Created: v0.1.0 (July 24, 2026)
+Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 
