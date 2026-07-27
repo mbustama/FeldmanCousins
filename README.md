@@ -144,6 +144,7 @@ FeldmanCousins/
 │   ├── pyfc_algorithmic_features_tutorial.ipynb  # sparsify_grid / smooth_1d,2d / finite-MC correction, on vs. off
 │   ├── pyfc_high_dimensional_tutorial.ipynb      # Scaling to many parameters (5- and 10-parameter models)
 │   ├── pyfc_joint_constraints_tutorial.ipynb     # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
+│   ├── pyfc_non_contiguous_data_tutorial.ipynb   # Passing non-contiguous (transposed) N-D data arrays directly
 │   ├── pyfc_quickstart_tutorial.ipynb            # Runnable counterpart to the Quick Start Guide (binned + unbinned)
 │   └── pyfc_strategy_comparison_tutorial.ipynb   # grid/scipy/hybrid strategy comparison + custom plotting from disk
 ├── pyfc/                            # Main Python package
