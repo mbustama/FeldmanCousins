@@ -133,6 +133,12 @@ Changed
 
 Added
 ~~~~~
+* **``generate_corner_plot`` now importable as ``from pyfc import generate_corner_plot``**
+  (previously only reachable as ``from pyfc.plotting import generate_corner_plot``),
+  matching ``compute_fc_intervals``'s existing top-level export. README.md,
+  :doc:`quickstart`, and all example notebooks now import both functions this
+  way -- code copied from the docs/tutorials no longer needs to know PyFC's
+  internal module layout (``orchestrator.py``/``plotting.py``).
 * **``bounds_func`` hook** on ``unconditional_fit_scipy``/``unconditional_fit_ultranest``
   and ``conditional_fit_1d/2d_scipy``/``conditional_fit_1d/2d_ultranest``
   (optimizers.py), plus a ``bounds_func=None`` kwarg on

@@ -243,7 +243,7 @@ For a binned analysis, fixed templates are ordinary NumPy arrays referenced via 
 import numpy as np
 import json
 from numba import njit
-from pyfc.orchestrator import compute_fc_intervals
+from pyfc import compute_fc_intervals
 
 # A) Fixed templates as module-level constants, referenced via closure
 S_template = np.array([0.1, 0.5, 2.0, 5.0])

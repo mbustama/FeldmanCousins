@@ -6,8 +6,10 @@ Feldman-Cousins Frequentist Analysis Framework
 # You can also expose the config generator if you want it easily accessible
 from .generate_config import main as generate_config
 from .orchestrator import compute_fc_intervals
+from .plotting import generate_corner_plot
 
 __all__ = [
     "compute_fc_intervals",
-    "generate_config"
+    "generate_config",
+    "generate_corner_plot",
 ]
