@@ -139,8 +139,7 @@ FeldmanCousins/
 │   │   ├── references.rst           # Bibliography page rendering
 │   │   └── refs.bib                 # BibTeX citations for physics and statistics literature
 │   ├── Makefile                     # Build commands for Unix
-│   ├── make.bat                     # Build commands for Windows
-│   └── pyfc.rst                     # Top-level autodoc stub (duplicate of source/pyfc.rst)
+│   └── make.bat                     # Build commands for Windows
 ├── examples/
 │   ├── pyfc_joint_constraints_tutorial.ipynb  # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
 │   └── pyfc_tutorial.ipynb          # End-to-end Jupyter notebook tutorial
@@ -160,11 +159,20 @@ FeldmanCousins/
 │   ├── test_core.py                 # Core installation and import tests, including checks for optional dependencies
 │   ├── test_io.py                   # Tests for File I/O and intermediate .npz checkpoint recovery mechanisms
 │   ├── test_multiprocessing.py      # Tests for unbinned execution and multi-processing concurrency using ProcessPoolExecutor
+│   ├── test_nd_binned.py            # Tests for N-dimensional binned data (flatten-invariance, 2D histogram smoke test)
 │   ├── test_numba_compilation.py    # Tests to ensure Numba JIT compilation executes correctly on the host architecture
 │   ├── test_optimizers.py           # Tests for continuous optimization routines, including SciPy boundary clamping
+│   ├── test_pdf_components.py       # Tests for the pdf_components mechanism (2- and 3+-component correctness)
 │   ├── test_restarts.py             # Tests for optimizer restarts, neighbor warm-starting, and res.success handling
 │   ├── test_smoothing.py            # Tests for the smoothed unphysical-rate NLL penalty
 │   └── test_statistics.py           # Tests for statistical correctness, likelihood behavior, and Asimov treatment convergence
+├── xbranch_compare/                 # Cross-branch (dev vs dev-no-templates) regression harness
+│   ├── comparator.py                # Recursive .npz diff (shape + NaN-mask + tolerant allclose)
+│   ├── compare_results.py           # Diffs the cross-branch scenario .npz outputs
+│   ├── run_comparison.sh            # Driver: git worktree add/remove + both scenario scripts + diff
+│   ├── shared_constants.py          # Physical-model constants shared by both scenario scripts (no pyfc import)
+│   ├── xbranch_new_api.py           # Runs all scenarios against the new (pdf_components) API
+│   └── xbranch_old_api.py           # Runs the old-API-compatible scenarios against a `dev` worktree
 ├── .gitignore                       # Git untracked files exclusions
 ├── CHANGELOG.md                     # Version history and notable changes
 ├── LICENSE                          # Open-source license terms
@@ -224,7 +232,7 @@ Because PyFC evaluates abstract $N$-dimensional grids, you **must** supply Pytho
 *(See the `examples/fc_tutorial.py` script in the repository for full, runnable end-to-end examples.)*
 
 ### 1. Binned Models
-For a binned analysis, `S_model` and `B_model` are passed as standard NumPy arrays representing fixed templates. You must write a `compute_rates_func` that combines them with your varied parameters to yield the total expected bin counts ($\mu$) and variances ($\sigma^2$).
+For a binned analysis, fixed templates are ordinary NumPy arrays referenced via closure (module-global or nested-function capture) from your `compute_rates_func` -- they are no longer passed in as function arguments. You must write a `compute_rates_func` that combines them with your varied parameters to yield the total expected bin counts ($\mu$) and variances ($\sigma^2$). `data`/`mu`/`sigma2` may be **any shape**, not just 1D -- a genuine 2D `(E, cos_theta)` histogram is fully supported and evaluated directly.
 
 *(Crucially: If you rely on Numba's maximum parallelization via the `"grid"` strategy or massive thread pools, your `compute_rates_func` **must** be decorated with `@njit`.)*
 
@@ -234,29 +242,29 @@ import json
 from numba import njit
 from pyfc.orchestrator import compute_fc_intervals
 
-# A) Define the physics mapper function
+# A) Fixed templates as module-level constants, referenced via closure
+S_template = np.array([0.1, 0.5, 2.0, 5.0])
+B_template = np.array([15.0, 5.0, 1.0, 0.1])
+
+# B) Define the physics mapper function
 @njit(fastmath=True, nogil=True)
-def my_compute_rates_binned(params, S_template, B_template, S_sigma2, B_sigma2):
+def my_compute_rates_binned(params, S_sigma2, B_sigma2):
     """ Maps parameters to expected counts (mu) and simulated variances (sigma2). """
     # Example: params[0] = flux_norm, params[1] = spectral_index, params[2] = bg_norm
     mu = (params[0] * params[1]) * S_template + params[2] * B_template
     sigma2 = ((params[0] * params[1])**2) * S_sigma2 + (params[2]**2) * B_sigma2
     return mu, sigma2
 
-# B) Setup Data and Arrays
+# C) Setup Data and Grids
 grids = [np.linspace(1e-9, 1e-7, 20), np.linspace(2.0, 3.0, 15), np.linspace(0.8, 1.2, 10)]
-S_template = np.array([0.1, 0.5, 2.0, 5.0])
-B_template = np.array([15.0, 5.0, 1.0, 0.1])
 observed_counts = np.array([20, 7, 2, 0])
 
 with open('fc_config.json', 'r') as f:
     config = json.load(f)
 
-# C) Execute
+# D) Execute
 results = compute_fc_intervals(
     data=observed_counts,
-    S_model=S_template,
-    B_model=B_template,
     grids=grids,
     compute_rates_func=my_compute_rates_binned,
     **config 
@@ -264,7 +272,7 @@ results = compute_fc_intervals(
 ```
 
 ### 2. Unbinned Models
-For unbinned data, `S_model` and `B_model` are Python functions that evaluate PDFs over exact kinematic coordinates. You must provide a `compute_rates_func` to yield the overall expected integral and localized probability density, alongside a `generate_toy_func` that handles parametric bootstrapping.
+For unbinned data, `pdf_components` is a **list** of Python functions that each evaluate a PDF over exact kinematic coordinates (signal, background, or any number of further components -- no longer limited to exactly two). Each is evaluated exactly once per fit and the resulting arrays are reused across every subsequent NLL evaluation. You must provide a `compute_rates_func` that consumes the pre-evaluated `probs` list to yield the overall expected integral and localized probability density, alongside a `generate_toy_func` that handles parametric bootstrapping.
 
 *(Note: Unbinned operations utilize `ProcessPoolExecutor` to bypass the GIL. Ensure your custom functions are defined at the top-level of your script so Python can serialize them across processes.)*
 
@@ -277,8 +285,9 @@ def s_pdf(x): return norm.pdf(x, loc=5.0, scale=1.0)
 def b_pdf(x): return expon.pdf(x, scale=2.0)
 
 # B) Define the physics mapper function
-def my_compute_rates_unbinned(params, s_probs, b_probs):
+def my_compute_rates_unbinned(params, probs):
     """ Returns total extended integral and unnormalized per-event density. """
+    s_probs, b_probs = probs[0], probs[1]
     expected_total = params[0] * params[1] + params[2]
     # Edge case protection for zero events
     if len(s_probs) == 0 and len(b_probs) == 0:
@@ -298,12 +307,11 @@ def my_generate_unbinned_toy(true_params, S_mc_pool, B_mc_pool):
 
 # D) Execute
 results = compute_fc_intervals(
-    data=observed_events, # Shape: (N_events, D_features)
-    S_model=s_pdf,
-    B_model=b_pdf,
+    data=observed_events, # Shape: (N_events,) or (N_events, D_features)
     grids=grids,
     compute_rates_func=my_compute_rates_unbinned,
     generate_toy_func=my_generate_unbinned_toy,
+    pdf_components=[s_pdf, b_pdf],
     **config 
 )
 ```
@@ -413,7 +421,7 @@ def simplex_bounds_func(fixed_values, free_indices, default_bounds_list):
     return bounds
 
 results, fig = compute_fc_intervals(
-    data, S_model, B_model, grids,
+    data=data, grids=grids,
     compute_rates_func=my_rates_func,
     bounds_func=simplex_bounds_func,
     # ... other arguments
@@ -436,7 +444,7 @@ simplex_constraint = LinearConstraint(
 )
 
 results, fig = compute_fc_intervals(
-    data, S_model, B_model, grids,
+    data=data, grids=grids,
     compute_rates_func=my_rates_func,
     constraints=[simplex_constraint],
     # ... other arguments

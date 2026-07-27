@@ -5,11 +5,75 @@ All notable changes to PyFC are documented here. This page mirrors the
 project's `CHANGELOG.md <https://github.com/mbustama/FeldmanCousins/blob/main/CHANGELOG.md>`_
 at the repository root.
 
-Unreleased
-----------
+0.10.0
+------
 Hardens the optimizer/likelihood layer against joint (non-box) parameter
 constraints, informed by a concrete failure case from a downstream project
-that needed to fit flavor fractions subject to ``f_e + f_mu <= 1``.
+that needed to fit flavor fractions subject to ``f_e + f_mu <= 1``. Also
+removes the ``S_model``/``B_model`` templating mechanism in favor of a
+more general ``pdf_components`` list, and adds support for N-dimensional
+binned data.
+
+BREAKING CHANGES
+~~~~~~~~~~~~~~~~
+* **``S_model``/``B_model`` removed entirely from ``compute_fc_intervals``
+  and every optimizer/toy-generation function** (``unconditional_fit_scipy``,
+  ``conditional_fit_1d_scipy``, ``conditional_fit_2d_scipy``,
+  ``unconditional_fit_ultranest``, ``conditional_fit_1d_ultranest``,
+  ``conditional_fit_2d_ultranest``, ``generate_and_fit_toys_python``, and
+  the binned/unbinned grid-search and toy-generation functions in
+  ``binned.py``/``unbinned.py``). An audit established that for binned
+  models, ``S_model``/``B_model`` were pure pass-through into
+  ``compute_rates_func`` -- ``calc_nll`` never read them itself. For
+  unbinned models they were a hardcoded signal/background *pair*, which
+  was itself an unnecessary rigidity on top of being pass-through.
+  ``compute_fc_intervals`` now takes only ``data`` and ``grids`` as
+  required positional arguments (down from 4:
+  ``data, S_model, B_model, grids``).
+
+  .. warning::
+     **Migration hazard:** because ``grids`` moves from position 4 to
+     position 2, any caller still using positional arguments will silently
+     pass the wrong value into the wrong parameter instead of raising an
+     error. Convert all calls to fully keyword-form
+     (``compute_fc_intervals(data=..., grids=..., compute_rates_func=..., ...)``).
+* **New ``pdf_components`` mechanism replaces ``S_model``/``B_model`` for
+  unbinned models.** ``pdf_components`` is a ``list[callable]`` of any
+  length (no longer hardcoded to exactly 2), passed to
+  ``compute_fc_intervals`` and to every optimizer/toy function. Each is
+  evaluated exactly once per fit as ``pdf(data)`` and the resulting
+  arrays are reused across every subsequent NLL evaluation in that fit --
+  the same caching behavior as before, generalized beyond a fixed
+  signal/background pair. Required (and validated) when
+  ``likelihood_type="unbinned"``; ignored with a warning for ``"binned"``.
+* **``compute_rates_func`` signature changes for both likelihood types:**
+
+  * Binned: ``(params, S_template, B_template, S_sigma2, B_sigma2)``
+    becomes ``(params, S_sigma2, B_sigma2)``. Fixed template arrays that
+    used to be passed as arguments must now be referenced via closure
+    (module-level constant or nested-function capture) instead -- this is
+    already numba-``@njit``-compatible and is the pattern used throughout
+    ``examples/pyfc_joint_constraints_tutorial.ipynb``'s own templates.
+  * Unbinned: ``(params, s_probs, b_probs)`` becomes ``(params, probs)``,
+    where ``probs`` is a ``list[np.ndarray]``, one entry per
+    ``pdf_components[i]``, in the same order.
+* **``data``, ``mu``, and ``sigma2`` now support arbitrary N-dimensional
+  shapes for binned models**, not just flat 1D vectors -- a genuine 2D
+  ``(E, cos_theta)`` histogram (or any other shape) can be evaluated
+  directly, with no need to flatten it yourself first. ``calc_nll``
+  flattens internally before summing, so the NLL is identical regardless
+  of how the bins are laid out spatially. ``grids`` (the parameter
+  *scan*, as opposed to the *data*) is unaffected -- it was already
+  N-parameter-general and remains a list of 1D per-parameter arrays.
+  Unbinned events already supported N-D feature vectors
+  (``data.shape == (n_events, n_features)``); this is now documented as
+  the indexing convention, along with a gotcha: bootstrapping an N-D MC
+  pool requires index-based resampling (``idx = np.random.choice(len(mc_pool),
+  size=n, replace=True); toy_events = mc_pool[idx]``), since
+  ``np.random.choice`` applied directly to an N-D pool silently samples
+  along the wrong axis.
+* **Migration:** see the rewritten :doc:`quickstart` for both binned and
+  unbinned examples under the new signatures.
 
 Changed
 ~~~~~~~
@@ -96,6 +160,19 @@ Added
   a real ``compute_fc_intervals`` pipeline and plots the resulting 2D
   confidence region confined to the simplex; and includes a bonus
   ``NonlinearConstraint`` (unit-disk) example.
+* ``tests/test_nd_binned.py``: flatten-invariance checks (a genuine 2D
+  histogram and its 1D-flattened equivalent must give byte-identical NLL)
+  plus a full ``compute_fc_intervals`` smoke test on 2D-shaped data.
+* ``tests/test_pdf_components.py``: correctness checks for the new
+  ``pdf_components`` mechanism with both 2 and 3+ components, including a
+  hand-computed reference NLL for the 3-component case (no old-API
+  equivalent to diff against).
+* ``xbranch_compare/``: a reusable cross-branch regression harness (kept
+  in the repo for future breaking API changes, not a one-off validation)
+  that empirically proves this refactor changed signatures only, never
+  numerics, by running equivalent models against both ``dev`` (old API,
+  via a temporary ``git worktree``) and ``dev-no-templates`` (new API) and
+  diffing the results.
 
 0.9.2 and earlier
 -----------------

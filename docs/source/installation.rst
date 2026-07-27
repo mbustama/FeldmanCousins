@@ -109,11 +109,20 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── test_core.py                 # Core installation and import tests, including checks for optional dependencies
    │   ├── test_io.py                   # Tests for File I/O and intermediate .npz checkpoint recovery mechanisms
    │   ├── test_multiprocessing.py      # Tests for unbinned execution and multi-processing concurrency using ProcessPoolExecutor
+   │   ├── test_nd_binned.py            # Tests for N-dimensional binned data (flatten-invariance, 2D histogram smoke test)
    │   ├── test_numba_compilation.py    # Tests to ensure Numba JIT compilation executes correctly on the host architecture
    │   ├── test_optimizers.py           # Tests for continuous optimization routines, including SciPy boundary clamping
+   │   ├── test_pdf_components.py       # Tests for the pdf_components mechanism (2- and 3+-component correctness)
    │   ├── test_restarts.py             # Tests for optimizer restarts, neighbor warm-starting, and res.success handling
    │   ├── test_smoothing.py            # Tests for the smoothed unphysical-rate NLL penalty
    │   └── test_statistics.py           # Tests for statistical correctness, likelihood behavior, and Asimov treatment convergence
+   ├── xbranch_compare/                 # Cross-branch (dev vs dev-no-templates) regression harness
+   │   ├── comparator.py                # Recursive .npz diff (shape + NaN-mask + tolerant allclose)
+   │   ├── compare_results.py           # Diffs the cross-branch scenario .npz outputs
+   │   ├── run_comparison.sh            # Driver: git worktree add/remove + both scenario scripts + diff
+   │   ├── shared_constants.py          # Physical-model constants shared by both scenario scripts (no pyfc import)
+   │   ├── xbranch_new_api.py           # Runs all scenarios against the new (pdf_components) API
+   │   └── xbranch_old_api.py           # Runs the old-API-compatible scenarios against a `dev` worktree
    ├── .gitignore                       # Git untracked files exclusions
    ├── CHANGELOG.md                     # Version history and notable changes
    ├── LICENSE                          # Open-source license terms

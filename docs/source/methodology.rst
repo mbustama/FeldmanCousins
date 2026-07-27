@@ -41,7 +41,7 @@ If your physical model has such a constraint and PyFC isn't told about it, the o
        return bounds
 
    results, fig = compute_fc_intervals(
-       data, S_model, B_model, grids,
+       data=data, grids=grids,
        compute_rates_func=my_rates_func,
        bounds_func=simplex_bounds_func,
        # ... other arguments
@@ -64,7 +64,7 @@ If your physical model has such a constraint and PyFC isn't told about it, the o
    )
 
    results, fig = compute_fc_intervals(
-       data, S_model, B_model, grids,
+       data=data, grids=grids,
        compute_rates_func=my_rates_func,
        constraints=[simplex_constraint],
        # ... other arguments
