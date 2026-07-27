@@ -89,6 +89,24 @@ BREAKING CHANGES
 
 Changed
 ~~~~~~~
+* **``examples/pyfc_tutorial.ipynb`` replaced by four focused notebooks:**
+  ``pyfc_quickstart_tutorial.ipynb`` (binned + unbinned, the runnable
+  counterpart to the README Quick Start Guide), ``pyfc_high_dimensional_
+  tutorial.ipynb`` (scaling to 5 and 10 parameters, including the
+  combinatorial cost of 2D contours), ``pyfc_algorithmic_features_
+  tutorial.ipynb`` (``sparsify_grid``/``smooth_1d``/``smooth_2d``/
+  ``use_finite_mc_correction_binned``, each demonstrated on vs. off), and
+  ``pyfc_strategy_comparison_tutorial.ipynb`` (``"grid"``/``"scipy"``/
+  ``"hybrid"`` timing comparison, plus building a custom Matplotlib
+  contour directly from PyFC's saved ``.json``/``.npz`` output). The old
+  monolithic notebook's heaviest cells (``n_toys=100``, dense 40-point
+  grids, ``sparsify_grid=False``, 2D contours) took 20+ minutes *each* to
+  execute, which made it impractical to keep re-running end-to-end; the
+  four replacements use small grids/``n_toys`` (in the style already
+  established by ``pyfc_joint_constraints_tutorial.ipynb``) so each runs
+  in well under a minute, and each carries more narrative markdown/
+  comments explaining *why* a cell does what it does, not just what it
+  does.
 * **``calc_nll`` (binned.py) and ``calc_nll_unbinned`` (unbinned.py): behavior
   change in the unphysical (``mu_i <= 0`` / ``p_events[k] <= 0``) region.**
   Previously, both functions returned a flat constant penalty (``1e10``) the

@@ -7,7 +7,10 @@ PyFC.egg-info/
 *.pyc
 *.csv
 docs/build/
-examples/fc_tutorial_output/
 examples/joint_constraints_output/
+examples/quickstart_output/
+examples/high_dimensional_output/
+examples/algorithmic_features_output/
+examples/strategy_comparison_output/
 PyFeldmanCousins.egg-info/
 xbranch_compare/output/
