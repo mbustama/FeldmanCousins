@@ -172,9 +172,7 @@ def generate_corner_plot(results, config):
                 tol = 1e-2
                 if np.min(z_diff) <= (0.0 + tol) and np.max(z_diff) >= (0.0 - tol):
                     ax.contour(X, Y, z_diff, levels=[0.0], colors=[colors[idx % len(colors)]], linewidths=2)
-                # if np.min(z_diff) <= 0.0 <= np.max(z_diff):
-                #     ax.contour(X, Y, z_diff, levels=[0.0], colors=[colors[idx % len(colors)]], linewidths=2)
-                
+
                 # Generate a dummy line exclusively to populate the legend on the bottom-left plot
                 if row == n_params - 1 and col == 0: 
                     ax.plot([], [], color=colors[idx % len(colors)], linewidth=2, label=f'{c} CL Contour')
@@ -212,4 +210,3 @@ def generate_corner_plot(results, config):
     plot_path = os.path.join(config.get("save_directory", "."), "fc_corner_plot.pdf")
     plt.savefig(plot_path, bbox_inches='tight')
     return fig
-    # plt.close()
