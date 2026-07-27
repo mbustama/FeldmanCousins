@@ -63,6 +63,7 @@ style template, and re-add any `.. warning::`/cross-reference embellishing
 you judge worthwhile for the new content -- exactly how every prior entry
 in that file was written.
 """
+
 import re
 import sys
 from dataclasses import dataclass, field
@@ -258,7 +259,9 @@ def compare(md_versions: list, rst_versions: list) -> list:
                     f"[{md_v.key}] / {md_s.name}: nested bullet count differs "
                     f"(CHANGELOG.md={md_s.nested_count}, changelog.rst={rst_s.nested_count})"
                 )
-            for idx, (md_fp, rst_fp) in enumerate(zip(md_s.top_bullets, rst_s.top_bullets), start=1):
+            for idx, (md_fp, rst_fp) in enumerate(
+                zip(md_s.top_bullets, rst_s.top_bullets), start=1
+            ):
                 if md_fp != rst_fp:
                     errors.append(
                         f"[{md_v.key}] / {md_s.name}, bullet #{idx}: opening text diverges\n"
