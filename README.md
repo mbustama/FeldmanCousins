@@ -116,6 +116,7 @@ The project structure is organized modularly to separate analytical likelihood m
 FeldmanCousins/
 ├── .github/
 │   └── workflows/
+│       ├── changelog-sync.yml       # CI check that CHANGELOG.md and changelog.rst stay in sync
 │       ├── lint.yml                 # CI linting and formatting pipeline
 │       ├── pages.yml                # GitHub Pages deployment for documentation
 │       ├── publish.yml              # PyPI (OIDC) automated publishing workflow
@@ -123,6 +124,9 @@ FeldmanCousins/
 ├── config/
 │   └── example_fc_config.json       # Template configuration file for CLI usage
 ├── docs/                            # Sphinx documentation configuration and source
+│   ├── dev/                         # Handoff/planning notes from past refactors (not part of the built docs)
+│   │   ├── FOLLOWUP_BRIEF_dev-no-templates.md
+│   │   └── REFACTOR_BRIEF_dev-no-templates.md
 │   ├── source/
 │   │   ├── _static/
 │   │   │   └── pyfc_logo.png        # Project branding asset
@@ -157,6 +161,8 @@ FeldmanCousins/
 │   ├── plotting.py                  # Visualization suite for 1D profiles and 2D contours
 │   ├── toys.py                      # Multiprocessing engines for MC pseudo-experiment generation
 │   └── unbinned.py                  # Extended Unbinned Maximum Likelihood (EUML) formulations
+├── scripts/
+│   └── check_changelog_sync.py      # Structural sync checker for CHANGELOG.md <-> changelog.rst
 ├── tests/                           # Unit and integration test suite
 │   ├── test_bounds_func.py          # Tests for the bounds_func parameter-dependent bounds mechanism
 │   ├── test_constraints.py          # Tests for scipy/UltraNest LinearConstraint/NonlinearConstraint support
