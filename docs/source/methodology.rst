@@ -17,6 +17,11 @@ PyFC provides several levers to optimize computation time versus robustness base
 
 Handling Joint/Simplex-Constrained Parameters
 ----------------------------------------------
+.. note::
+   Like the Quick Start Guide, the worked examples below use this branch's (v0.10.0,
+   unreleased) ``compute_fc_intervals``/``compute_rates_func`` API -- see the note at the top
+   of :doc:`quickstart` if ``pip install PyFeldmanCousins`` gives you a mismatched version.
+
 ``bounds_list`` (built automatically from your ``grids``) only expresses independent per-parameter box constraints -- ``param_i`` must lie in ``[lo_i, hi_i]``, with no notion of a relationship between two different parameters. Neither L-BFGS-B/SLSQP nor UltraNest's prior transform have any native concept of a *joint* constraint like a simplex (``a + b <= 1``) or a sphere (``a^2 + b^2 <= 1``).
 
 If your physical model has such a constraint and PyFC isn't told about it, the optimizer's default starting guess (the bounds midpoint) can land in the unphysical region, and a naive ``compute_rates_func`` that just returns a degenerate/zero rate there gives gradient-based optimizers nothing to climb out with. **Do not work around this with a hand-rolled smooth penalty function multiplying your rate function** -- it is fragile to tune and reproduces that same flat-gradient trap, just user-side instead of library-side. PyFC provides two purpose-built mechanisms instead, which can be used together.
