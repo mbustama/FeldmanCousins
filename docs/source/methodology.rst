@@ -13,6 +13,15 @@ PyFC provides several levers to optimize computation time versus robustness base
 .. note::
    **Handling Multi-Dimensional Spaces**: PyFC handles arbitrary :math:`N`-dimensional physics models automatically. It profiles (maximizes the likelihood over) all parameters not explicitly being evaluated in the current 1D or 2D slice.
 
+Handling Joint/Simplex-Constrained Parameters
+----------------------------------------------
+``bounds_list`` only expresses independent per-parameter box constraints; neither L-BFGS-B/SLSQP nor UltraNest's prior transform have a native notion of a *joint* constraint between two parameters (e.g. a simplex ``a + b <= 1``). Do not work around this with a hand-rolled penalty function multiplying your rate -- it reproduces the same flat-gradient optimizer trap discussed above, just user-side. PyFC provides two purpose-built mechanisms instead:
+
+* **``bounds_func``**: tightens a free parameter's box bound based on whatever other parameter(s) the current scan step has fixed. Use when the constraint only couples the scan's currently-fixed test parameter(s) to a free nuisance parameter.
+* **``constraints``**: a list of ``scipy.optimize.LinearConstraint``/``NonlinearConstraint`` objects, expressed in the full parameter-vector space. Use when the constraint couples multiple *simultaneously-free* nuisance parameters, a case ``bounds_func`` cannot express. Automatically switches the scipy method from ``L-BFGS-B`` to ``SLSQP``.
+
+See the README section "Handling Joint/Simplex-Constrained Parameters" for a full worked example (a neutrino flavor-fraction fit with ``f_e + f_mu <= 1``).
+
 Statistical Mathematics
 -----------------------
 

@@ -1,13 +1,48 @@
 """
 Continuous Optimization Module
 
-This file contains the continuous optimization routines used to minimize the 
-Negative Log-Likelihood (NLL) functions for both binned and unbinned models. 
-It provides interfaces for gradient-based local optimization via SciPy (L-BFGS-B) 
-and robust global optimization via UltraNest (Nested Sampling). These optimizers 
-are essential for profiling out nuisance parameters and finding the global 
-and conditional likelihood maxima required for the Profile Likelihood Ratio 
+This file contains the continuous optimization routines used to minimize the
+Negative Log-Likelihood (NLL) functions for both binned and unbinned models.
+It provides interfaces for gradient-based local optimization via SciPy (L-BFGS-B)
+and robust global optimization via UltraNest (Nested Sampling). These optimizers
+are essential for profiling out nuisance parameters and finding the global
+and conditional likelihood maxima required for the Profile Likelihood Ratio
 test statistic in the Feldman-Cousins construction.
+
+A note on joint/simplex-constrained parameters:
+------------------------------------------------
+Every `bounds_list` entry here is an INDEPENDENT per-parameter box constraint
+only -- `param_i` in `[lo_i, hi_i]`, with no notion of a relationship between
+two different parameters. Neither L-BFGS-B/SLSQP nor UltraNest's prior
+transform (which maps a unit hypercube onto `bounds_list` one coordinate at a
+time) have any native concept of a joint constraint like a simplex
+(`a + b <= 1`) or a sphere (`a^2 + b^2 <= 1`). If your physical model has such
+a constraint, do not work around it with a hand-rolled penalty function
+multiplying your rate -- that reproduces the exact flat-gradient trap
+described in `calc_nll`'s docstring, just user-side instead of library-side.
+Two purpose-built mechanisms exist instead, and can be used together:
+  - `bounds_func` (accepted by every function below): tightens a free
+    parameter's own box bound based on whatever OTHER parameter(s) the
+    current scan step has fixed. Use this when the constraint only ever
+    couples the scan's currently-FIXED test parameter(s) to a free nuisance
+    parameter -- it's cheap, since it keeps the optimizer's search box (and
+    its bounds-midpoint starting guess) always physical, with no boundary-
+    adjacent evaluations needed at all.
+  - `constraints` (accepted by `unconditional_fit_scipy`, the two
+    `conditional_fit_*_scipy` functions, and the two `conditional_fit_*_
+    ultranest` functions besides `unconditional_fit_ultranest`): a list of
+    `scipy.optimize.LinearConstraint`/`NonlinearConstraint` objects,
+    expressed in the FULL n_params space. Use this when the constraint
+    couples multiple parameters that are SIMULTANEOUSLY free (e.g. neither
+    is ever the scan's fixed test parameter) -- a case `bounds_func` cannot
+    express. On the scipy side this switches `method` from 'L-BFGS-B' to
+    'SLSQP' (the only two of PyFC's methods that support `constraints`
+    together with bounds); on the UltraNest side, a violated constraint
+    just yields a very large negative log-likelihood at that point, since
+    nested sampling doesn't use gradients and isn't vulnerable to the
+    flat-region trap that motivates the scipy-side machinery.
+See the README section "Handling Joint/Simplex-Constrained Parameters" for a
+full worked example (a neutrino flavor-fraction fit with `f_e + f_mu <= 1`).
 
 Date: July 24, 2026
 Author: Mauricio Bustamante (mbustamante@gmail.com)

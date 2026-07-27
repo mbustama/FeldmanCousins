@@ -318,6 +318,7 @@ Comprehensive documentation for PyFC is hosted on GitHub Pages. It includes a qu
 | `cl` | Confidence Levels determining exact frequentist coverage integration targets. Dynamically sized; output keys in .npz will automatically match the provided levels (e.g., `1d_accepted_p1_0.9` for 0.90). | List of floats `(0.0, 1.0)` | `[0.68, 0.90]` |
 | `n_toys` | Monte Carlo pseudo-experiments generated per parameter space point. | Integer `> 0` | `500` |
 | `strategy` | Optimizer used for finding global and conditional likelihood minima. | `"scipy"`, `"ultranest"`, `"hybrid"`, `"grid"` | `"scipy"` |
+| `scipy_method` | Overrides the `scipy.optimize.minimize` method. Only meaningful for `strategy="scipy"`/`"hybrid"`. `null` lets PyFC pick automatically: `"L-BFGS-B"` by default, or `"SLSQP"` if `constraints` are supplied programmatically (see [Handling joint/simplex-constrained parameters](#handling-jointsimplex-constrained-parameters)). | `null`, `"L-BFGS-B"`, `"SLSQP"`, `"trust-constr"` | `null` |
 | `use_finite_mc_correction_binned` | Shifts Poisson likelihood to a Negative Binomial to account for finite simulation stats. | `True`, `False` | `True` |
 | `compute_1D_intervals` | Toggles 1D limits mapping. | `True`, `False` | `True` |
 | `compute_2D_intervals` | Toggles joint 2D contour scanning and edge tracing. | `True`, `False` | `True` |
@@ -378,6 +379,65 @@ Calculating $N_{\text{toys}}$ for every node in a $100 \times 100$ 2D grid is co
 3. Fits a Scipy `RectBivariateSpline` to interpolate the critical threshold surface across the rest of the grid.
 4. Locates the decision boundary (the "edge" of the contour where $t_{\text{data}} \approx t_{\text{critical}}$).
 5. Evaluates exact data fits and expensive MC toys on the specific high-resolution cells lying strictly on this perimeter to perfect the contour edge, drastically cutting runtime.
+
+### Handling Joint/Simplex-Constrained Parameters
+
+`bounds_list` (built automatically from your `grids`) only expresses **independent per-parameter box constraints** -- `param_i` must lie in `[lo_i, hi_i]`, with no notion of a relationship between two different parameters. Neither L-BFGS-B/SLSQP (SciPy) nor the nested-sampling prior transform (UltraNest) have any native concept of a *joint* constraint like a simplex (`a + b <= 1`) or a sphere (`a^2 + b^2 <= 1`).
+
+If your physical model has such a constraint and you don't tell PyFC about it, the optimizer's default starting guess (the bounds midpoint) can land in the unphysical region, and a naive `compute_rates_func` that just returns a degenerate/zero rate there gives gradient-based optimizers nothing to climb out with (see the NLL smoothing discussion above -- this was the original motivating failure case for that fix). **Do not work around this with a hand-rolled smooth penalty function multiplying your rate function** -- it's fragile to tune (too narrow a penalty width reproduces the same flat-gradient trap) and PyFC has two purpose-built mechanisms instead.
+
+**Worked example:** a 6-parameter neutrino flavor-fraction fit where `f_e` (index 0) and `f_mu` (index 1) are subject to `f_e + f_mu <= 1`, since the derived third fraction `f_tau = 1 - f_e - f_mu` must stay non-negative.
+
+**Mechanism 1 -- `bounds_func`: use when the constraint only involves the scan's currently-FIXED test parameter.** During a 1D/2D profile scan, one (or two) parameters are fixed to a grid test value while the rest are profiled (free). If your constraint couples a free nuisance parameter to whichever parameter(s) happen to be fixed right now, `bounds_func` lets you tighten that free parameter's box bound itself -- so the box is always physical, and the optimizer's bounds-midpoint starting guess is automatically valid too:
+
+```python
+def simplex_bounds_func(fixed_values, free_indices, default_bounds_list):
+    """f_e (index 0) + f_mu (index 1) <= 1."""
+    bounds = [default_bounds_list[i] for i in free_indices]
+    if 0 in fixed_values and 1 in free_indices:      # f_e fixed, f_mu free
+        j = free_indices.index(1)
+        lo, hi = bounds[j]
+        bounds[j] = (lo, min(hi, 1.0 - fixed_values[0]))
+    if 1 in fixed_values and 0 in free_indices:       # f_mu fixed, f_e free
+        j = free_indices.index(0)
+        lo, hi = bounds[j]
+        bounds[j] = (lo, min(hi, 1.0 - fixed_values[1]))
+    return bounds
+
+results, fig = compute_fc_intervals(
+    data, S_model, B_model, grids,
+    compute_rates_func=my_rates_func,
+    bounds_func=simplex_bounds_func,
+    # ... other arguments
+)
+```
+
+`bounds_func` is called as `bounds_func(fixed_values, free_indices, default_bounds_list)`, where `fixed_values` is `{param_index: test_value}` for whichever parameter(s) the current scan step has fixed (an empty dict `{}` during the unconditional fit, since nothing is fixed there), `free_indices` are the indices being optimized (in the order your returned list must match), and `default_bounds_list` is the full, untouched `bounds_list` (indexed by the *original* parameter index, not by position in `free_indices`). Return one `(lo, hi)` tuple per entry of `free_indices`.
+
+**Limitation:** `bounds_func` cannot express a constraint between two parameters that are *both* free at the same time (e.g. if `f_e` and `f_mu` are never the scan's fixed test parameter in a particular grid, such as while profiling a 2D scan over two unrelated parameters). That case needs mechanism 2.
+
+**Mechanism 2 -- `constraints`: use for constraints among multiple simultaneously-free nuisance parameters.** Pass a list of `scipy.optimize.LinearConstraint`/`NonlinearConstraint` objects, expressed in the **full** parameter-vector space (not just the free subspace -- PyFC projects them down internally, substituting whichever value(s) the scan currently has fixed):
+
+```python
+from scipy.optimize import LinearConstraint
+
+# f_e + f_mu <= 1, i.e. 1*f_e + 1*f_mu + 0*(everything else) <= 1
+simplex_constraint = LinearConstraint(
+    A=[[1, 1, 0, 0, 0, 0]],   # one row per constraint, one column per full parameter
+    lb=-np.inf, ub=1.0,
+)
+
+results, fig = compute_fc_intervals(
+    data, S_model, B_model, grids,
+    compute_rates_func=my_rates_func,
+    constraints=[simplex_constraint],
+    # ... other arguments
+)
+```
+
+For the SciPy path, supplying `constraints` automatically switches the optimizer from `L-BFGS-B` to `SLSQP` (the only two of PyFC's supported methods that accept `constraints`; `trust-constr` is also available via `scipy_method="trust-constr"` for better-conditioned but slower fits). For the UltraNest path, since nested sampling doesn't use gradients, a violated constraint simply makes that point's log-likelihood a very large negative number -- no special method switch needed.
+
+**Which one should I use?** If the constraint only ever couples the scan's currently-fixed test parameter(s) to a free nuisance parameter, `bounds_func` is cheaper (it tightens the box itself, so the optimizer never has to work near a boundary at all) and is the mechanism used in the example above for a 1D/2D scan *over* `f_e` or `f_mu`. If your scan fixes some *other* parameter and profiles `f_e` and `f_mu` together as simultaneously-free nuisance parameters, only `constraints` can express that. The two mechanisms compose: pass both if you have constraints of both shapes, and they can be used together on the very same fit call.
 
 ---
 
@@ -524,6 +584,9 @@ A: For a 68% CL interval (1-sigma), 200-1000 toys are often sufficient. For a 90
 
 **Q: I have a parameter that represents a systematic uncertainty. How do I profile it?**
 A: Simply pass a `np.linspace()` grid for that parameter into the `grids` list. The framework automatically profiles (maximizes) any parameter in the `grids` list that is not the direct target of the current 1D or 2D interval scan.
+
+**Q: Two of my parameters have a joint constraint (e.g. `a + b <= 1`, or they lie on a simplex/sphere) -- how do I express that?**
+A: `bounds_list` only supports independent per-parameter box bounds, with no native notion of a relationship between two parameters. Do not work around this with a hand-rolled penalty function multiplying your rate -- see [Handling Joint/Simplex-Constrained Parameters](#handling-jointsimplex-constrained-parameters) for the two purpose-built mechanisms (`bounds_func` and `constraints`) and a full worked example.
 
 ---
 
