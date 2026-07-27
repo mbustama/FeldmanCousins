@@ -245,7 +245,7 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
                          adaptive_toys=True, toy_batch_size=200,
                          sparsify_grid=True, warm_start=True,
                          likelihood_type="binned", S_mc_pool=None, B_mc_pool=None,
-                         output_file=None, save_log=False, save_directory="fc_output",
+                         output_file=None, save_log=False, save_directory="output/example_fc_output",
                          use_finite_mc_correction_binned=True, S_sumw2=None, B_sumw2=None,
                          compute_1D_intervals=True, compute_2D_intervals=True, param_names=None,
                          smooth_1d=False, smooth_2d=False, bounds_func=None,
@@ -316,7 +316,10 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
     S_mc_pool, B_mc_pool : array_like, optional
         Pool of events to bootstrap for unbinned toy generation.
     output_file, save_log, save_directory : str/bool
-        I/O file structures.
+        I/O file structures. `save_directory` (default `"output/example_fc_output"`,
+        relative to the current working directory) is where checkpoints and final
+        results are written; see the README's "Outputs, Plots, and Checkpointing"
+        section.
     use_finite_mc_correction_binned : bool, optional
         Toggle for Poisson-Gamma mixture likelihood.
     S_sumw2, B_sumw2 : array_like, optional

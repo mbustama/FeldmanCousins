@@ -347,7 +347,7 @@ def main():
 
     config["save_directory"] = get_input(
         "18. Output directory path?",
-        default_val="fc_output",
+        default_val="output/example_fc_output",
         cast_func=str
     )
 
