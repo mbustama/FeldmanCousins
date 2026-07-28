@@ -73,6 +73,67 @@ def test_calc_nll_finite_mc_matches_hand_computed_paper_formula():
     assert np.isclose(nll_actual, nll_reference, rtol=1e-12, atol=1e-12)
 
 
+def _exact_recurrence_nll(mu, sigma2, n_obs):
+    """
+    Independent high-precision reference for the finite-MC formula, using
+    the exact Gamma recurrence Gamma(x+n) = Gamma(x) * PROD_{k=0}^{n-1}(x+k)
+    (valid since n_obs is always a non-negative integer count) instead of
+    evaluating lgamma(n+alpha) and lgamma(alpha) separately and
+    subtracting -- the subtraction is what loses precision at large alpha
+    (both terms scale like alpha*ln(alpha); their difference is only
+    O(n*ln(alpha))). This is the same identity `calc_nll` itself now uses
+    internally, so this is not an independent *implementation*, but it is
+    an independent, exact *mathematical* check: verified against
+    `_paper_L_eff_nll` (the literal lgamma-difference transcription of the
+    paper's own Eq. 3.16) at ordinary alpha in
+    test_calc_nll_finite_mc_matches_hand_computed_paper_formula above,
+    where both forms agree to 1e-12 -- they are the same quantity, just
+    computed two different ways.
+    """
+    alpha = mu**2 / sigma2 + 1.0
+    beta = mu / sigma2
+    n_int = int(round(n_obs))
+    lgamma_diff = sum(math.log(alpha + k) for k in range(n_int))
+    lnL = -alpha * math.log1p(1.0 / beta) - n_obs * math.log1p(beta) + lgamma_diff
+    return -2.0 * lnL
+
+
+def test_calc_nll_finite_mc_high_alpha_avoids_precision_loss():
+    """
+    Regression test for a catastrophic-cancellation bug: for well-simulated
+    templates (small sigma2 relative to mu^2, i.e. large alpha), evaluating
+    ln(Gamma(n+alpha)) - ln(Gamma(alpha)) as a literal difference of two
+    `lgamma` calls loses precision, since both terms are individually huge
+    (~alpha*ln(alpha)) while their difference is only O(n*ln(alpha)).
+
+    At mu=1000, sigma2=1e-9, n_obs=1000 (alpha ~ 1e15), the naive
+    lgamma-difference formula (`_paper_L_eff_nll`, a direct transcription
+    of the paper's own Eq. 3.16) is off from the true value by ~7.5 in
+    absolute NLL -- confirmed below to still be wrong by more than 1.0, so
+    this test would have caught the original bug. `calc_nll` itself must
+    match the exact-recurrence reference to numerical (not just
+    order-of-magnitude) precision.
+    """
+    mu, sigma2, n_obs = 1000.0, 1e-9, 1000.0
+
+    @njit(fastmath=True, nogil=True)
+    def rate_func(params, S_s2, B_s2):
+        return np.array([params[0]]), np.array([params[1]])
+
+    params = np.array([mu, sigma2])
+    nll_actual = calc_nll(params, np.array([n_obs]), np.zeros(1), np.zeros(1), True, rate_func)
+
+    nll_exact = _exact_recurrence_nll(mu, sigma2, n_obs)
+    nll_naive = _paper_L_eff_nll(mu, sigma2, n_obs)
+
+    assert abs(nll_naive - nll_exact) > 1.0, (
+        "sanity check that this regime actually exercises the precision-loss "
+        "bug -- if this fails, the naive formula stopped being unstable here "
+        "and the test case needs a more extreme (mu, sigma2) pair"
+    )
+    assert np.isclose(nll_actual, nll_exact, rtol=1e-8, atol=1e-6)
+
+
 def test_calc_nll_finite_mc_matches_paper_formula_across_multiple_bins():
     """Sweeps several (mu, sigma2, n_obs) combinations against _paper_L_eff_nll."""
     S_template = np.array([3.0, 7.5, 1.2, 20.0])
