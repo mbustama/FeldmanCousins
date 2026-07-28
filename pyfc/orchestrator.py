@@ -186,6 +186,7 @@ def _find_contiguous_intervals(test_points, accepted):
     """
     intervals = []
     run_start = None
+    prev_val = None
     for val, is_acc in zip(test_points, accepted):
         if is_acc and run_start is None:
             run_start = val

@@ -1,5 +1,5 @@
 """
-Tests for FIX 2: the `bounds_func` hook that lets the box bounds of the
+Tests for the `bounds_func` hook that lets the box bounds of the
 profiled (free) parameters depend on the currently-fixed test value(s).
 
 Motivating scenario: two flavor fractions f_e (index 0), f_mu (index 1)
@@ -111,7 +111,8 @@ def test_bounds_func_unconditional_noop_with_empty_fixed_values():
     )
     # No fixed values -> simplex_bounds_func returns the bounds_list unmodified,
     # so both params may independently reach values that individually violate
-    # f_e + f_mu <= 1 (that joint case is exactly what FIX 3 is for).
+    # f_e + f_mu <= 1 (that joint case is exactly what the `constraints`
+    # mechanism is for).
     assert 0.0 <= best_params[0] <= 1.0
     assert 0.0 <= best_params[1] <= 1.0
 

@@ -1,5 +1,5 @@
 """
-Tests for FIX 4: optimizer restarts, neighbor warm-starting for the DATA fit,
+Tests for optimizer restarts, neighbor warm-starting for the DATA fit,
 and res.success checking.
 
 IMPORTANT CORRECTION this fix is built on (see optimizers.py/orchestrator.py

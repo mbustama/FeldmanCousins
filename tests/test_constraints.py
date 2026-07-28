@@ -1,8 +1,8 @@
 """
-Tests for FIX 3: native scipy LinearConstraint/NonlinearConstraint support
+Tests for native scipy LinearConstraint/NonlinearConstraint support
 (and the shared `_project_linear_constraint` projection helper), for
 expressing joint constraints among multiple SIMULTANEOUSLY-free nuisance
-parameters -- the case `bounds_func` (FIX 2) cannot express.
+parameters -- the case `bounds_func` cannot express.
 """
 import time
 from unittest.mock import patch
@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(not SCIPY_AVAILABLE, reason="SciPy is required f
 
 
 def simplex_bounds_func(fixed_values, free_indices, default_bounds_list):
-    """The FIX 2 example from the task, used here for the FIX2/FIX3 agreement check."""
+    """The `bounds_func` example used here for the bounds_func/constraints agreement check."""
     bounds = [default_bounds_list[i] for i in free_indices]
     if 0 in fixed_values and 1 in free_indices:
         j = free_indices.index(1)
@@ -38,17 +38,17 @@ def simplex_bounds_func(fixed_values, free_indices, default_bounds_list):
 
 
 # --- _project_linear_constraint unit tests ---
-def test_project_linear_constraint_matches_fix2_tightened_box():
+def test_project_linear_constraint_matches_bounds_func_tightened_box():
     """
-    Sanity check called out in the task: for a single linear constraint like
-    f_e + f_mu <= 1 with f_e fixed, projecting it down should reduce to
-    exactly the tightened box bound produced by FIX 2's bounds_func.
+    Sanity check: for a single linear constraint like f_e + f_mu <= 1 with
+    f_e fixed, projecting it down should reduce to exactly the tightened
+    box bound produced by bounds_func.
     """
     constraint = optimize.LinearConstraint(np.array([[1.0, 1.0]]), -np.inf, 1.0)
     test_val = 0.7
     projected = _project_linear_constraint(constraint, {0: test_val}, free_indices=[1])
 
-    # Original box for p1 was [0, 1]; FIX2 tightens it to [0, 1 - 0.7] = [0, 0.3].
+    # Original box for p1 was [0, 1]; bounds_func tightens it to [0, 1 - 0.7] = [0, 0.3].
     # The projected LinearConstraint should say: x1 <= 1 - 0.7 = 0.3 (lb still -inf).
     assert projected.A.shape == (1, 1)
     assert projected.A[0, 0] == pytest.approx(1.0)
@@ -68,7 +68,7 @@ def test_project_linear_constraint_nonlinear_substitutes_fixed_value():
     assert val[0] == pytest.approx(1.0)
 
 
-# --- FIX2 vs FIX3 agreement (overlapping case) ---
+# --- bounds_func vs constraints agreement (overlapping case) ---
 @njit(fastmath=True, nogil=True)
 def _two_param_rate_func(params, S_sumw2, B_sumw2):
     mu = np.array([10.0 * params[0] + 10.0 * params[1] + 1.0])
@@ -78,7 +78,7 @@ def _two_param_rate_func(params, S_sumw2, B_sumw2):
 def test_bounds_func_and_constraints_agree_on_overlapping_case():
     """
     For a constraint between the fixed test parameter and a single free
-    nuisance parameter, bounds_func (FIX 2) and constraints (FIX 3) should
+    nuisance parameter, bounds_func and constraints should
     reach the same optimum -- this is the case where they overlap.
     """
     bounds_list = [(0.0, 1.0), (0.0, 1.0)]
@@ -105,7 +105,7 @@ def test_constraints_handle_two_simultaneously_free_nuisance_params():
     """
     3-param model: p0 + p1 <= 1 must hold, but NEITHER p0 nor p1 is ever the
     scan's fixed test parameter (p2 is fixed instead) -- both are free at the
-    same time. bounds_func cannot express this (FIX 2's own documented
+    same time. bounds_func cannot express this (its own documented
     limitation); constraints can.
     """
     bounds_list = [(0.0, 1.0), (0.0, 1.0), (0.0, 5.0)]

@@ -14,7 +14,6 @@ import os
 import tempfile
 
 import numpy as np
-import pytest
 from numba import njit
 
 from pyfc.orchestrator import _find_contiguous_intervals, _save_fc_json, compute_fc_intervals

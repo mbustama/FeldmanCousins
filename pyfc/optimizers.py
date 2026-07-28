@@ -106,7 +106,7 @@ def _project_linear_constraint(constraint, fixed_indices_values, free_indices):
     projected constraint is (lb - A_fixed @ x_fixed) <= A_free x_free <=
     (ub - A_fixed @ x_fixed). Sanity check: for a single linear constraint
     like f_e + f_mu <= 1 with f_e fixed, this reduces to exactly the
-    tightened box bound produced by FIX 2's `bounds_func` mechanism.
+    tightened box bound produced by the `bounds_func` mechanism.
 
     For a NonlinearConstraint, the fixed values are substituted into a
     wrapper around the original `fun` (and `jac`, if one was supplied),
@@ -151,12 +151,12 @@ def _project_linear_constraint(constraint, fixed_indices_values, free_indices):
         def fun_free(free_p):
             return constraint.fun(_expand(free_p))
 
-        jac_free = None
+        kwargs = {}
         if callable(getattr(constraint, "jac", None)):
             def jac_free(free_p):
                 return np.asarray(constraint.jac(_expand(free_p)))[:, free_indices]
+            kwargs["jac"] = jac_free
 
-        kwargs = {"jac": jac_free} if jac_free is not None else {}
         return optimize.NonlinearConstraint(fun_free, constraint.lb, constraint.ub, **kwargs)
 
     raise TypeError(f"Unsupported constraint type for projection: {type(constraint)!r}")
@@ -359,7 +359,6 @@ def unconditional_fit_scipy(data, n_params, bounds_list, compute_rates_func, see
     else:
         resolved_bounds = bounds_list
 
-    # x0 = seed if seed is not None else [(b[0] + b[1]) / 2.0 for b in resolved_bounds]
     if seed is not None:
         eps = 1e-8
         lb = np.array([b[0] for b in resolved_bounds]) + eps
@@ -473,7 +472,6 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, bounds_list, com
                 p[idx] = free_val
             return calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
 
-    # x0 = seed if seed is not None else [(b[0] + b[1]) / 2.0 for b in free_bounds]
     if seed is not None:
         eps = 1e-8
         lb = np.array([b[0] for b in free_bounds]) + eps
@@ -589,7 +587,6 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, bou
                 p[idx] = free_val
             return calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
 
-    # x0 = seed if seed is not None else [(b[0] + b[1]) / 2.0 for b in free_bounds]
     if seed is not None:
         eps = 1e-8
         lb = np.array([b[0] for b in free_bounds]) + eps
