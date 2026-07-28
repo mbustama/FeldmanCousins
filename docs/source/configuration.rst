@@ -57,8 +57,24 @@ Configuration Parameters
      - Thread/process count for parallel toy generation. ``null`` maps to max hardware threads.
      - Integer :math:`\geq 0`
      - ``8``
+   * - ``verbose``
+     - Logging detail level.
+     - ``0`` (Silent), ``1``, ``2`` (Debug)
+     - ``1``
    * - ``warm_start``
      - Checkpoints interim state to ``.npz`` files to recover from preemptions.
+     - ``True``, ``False``
+     - ``True``
+   * - ``param_names``
+     - Labels mapping the physical parameters for plotting outputs. Supports raw LaTeX (e.g. ``[r"$\Phi$", r"$\gamma$"]``).
+     - List of strings
+     - ``["param1", "param2", ...]``
+   * - ``smooth_1d``
+     - If True, applies default Gaussian kernel smoothing to 1D limit profiles in plots.
+     - ``True``, ``False``
+     - ``True``
+   * - ``smooth_2d``
+     - If True, applies default interpolation smoothing to final 2D contour graphics.
      - ``True``, ``False``
      - ``True``
    * - ``adaptive_toys``
@@ -81,3 +97,15 @@ Configuration Parameters
      - Seeds each 1D/2D scan grid point's DATA fit from an adjacent, already-evaluated grid point's profiled parameters instead of always starting from the bounds midpoint. Only affects ``strategy="scipy"``'s DATA fit, not the MC toy fits or other strategies.
      - ``True``, ``False``
      - ``True``
+   * - ``save_log``
+     - Pipes output directly to a persistent text log file.
+     - ``True``, ``False``
+     - ``True``
+   * - ``save_directory``
+     - Directory path where final results, plots, and checkpoints reside.
+     - String (path)
+     - ``"output/example_fc_output"``
+   * - ``output_file``
+     - Prefix for the serialized ``.npz`` and ``.json`` result data structures.
+     - String
+     - ``"fc_results"``
