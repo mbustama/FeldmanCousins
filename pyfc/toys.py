@@ -312,7 +312,20 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
                             break
             return np.array(t_stats)
         except Exception as e:
-            warnings.warn(f"ProcessPoolExecutor failed. Falling back to ThreadPoolExecutor. Error: {e}")
+            # This is deliberately broad -- pool-infrastructure failures
+            # (a worker process crashing, an unpicklable compute_rates_func/
+            # generate_toy_func/pdf_components closure) surface here as a
+            # mix of concurrent.futures.process.BrokenProcessPool, TypeError,
+            # and platform-specific OSError, with no single reliable type to
+            # narrow to. But this also catches a genuine bug inside the
+            # user's own functions (raised inside a worker and propagated
+            # here by executor.map) just as readily -- the warning below
+            # does not claim a specific cause for that reason. If the same
+            # error recurs on the ThreadPoolExecutor fallback below (which
+            # does NOT catch exceptions), it will surface uncaught there,
+            # which is the actual signal that this was a user-code bug
+            # rather than a pool problem.
+            warnings.warn(f"Toy generation via ProcessPoolExecutor did not complete ({type(e).__name__}: {e}). Retrying via ThreadPoolExecutor -- if this same error recurs there, it is most likely a bug in your compute_rates_func/generate_toy_func/pdf_components, not a ProcessPoolExecutor/pickling issue.")
 
     # --- Branch 2: Binned Data (Thread-based parallelism) or Unbinned Fallback ---
     if likelihood_type == "binned":
