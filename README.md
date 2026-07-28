@@ -548,9 +548,11 @@ where:
 By construction, $t \geq 0$. Lower values indicate excellent agreement between the data and the test hypothesis.
 
 ### Binned Likelihood
-For binned configurations, the likelihood is the product of independent Poisson probabilities across $N$ bins. Dropping the data-dependent factorial constant, PyFC evaluates the Negative Log-Likelihood (NLL):
+For binned configurations, the likelihood is the product of independent Poisson probabilities across $N$ bins. PyFC evaluates the saturated (Baker-Cousins) form of the Negative Log-Likelihood -- the likelihood ratio relative to the saturated model ($\mu_i = n_i$) -- dropping the data-only constant $\ln(n_i!)$ term:
 
-$$-\ln \mathcal{L}_{\text{Poisson}} = \sum_{i=1}^{N} \left( \mu_i(\boldsymbol{\theta}) - n_i \ln \mu_i(\boldsymbol{\theta}) \right)~,$$ 
+$$-\ln \mathcal{L}_{\text{Poisson}} = \sum_{i=1}^{N} \left( \mu_i(\boldsymbol{\theta}) - n_i + n_i \ln\frac{n_i}{\mu_i(\boldsymbol{\theta})} \right)~,$$
+
+PyFC's implementation carries an extra overall factor of 2 relative to this expression -- it computes $-2\ln \mathcal{L}_{\text{Poisson}}$ directly, matching the Baker-Cousins/Wilks convention used for the PLR test statistic $t$ itself (see above), so no separate doubling is needed when forming $t = \text{NLL}_{\text{cond}} - \text{NLL}_{\text{uncond}}$.
 
 **Finite Monte Carlo Correction:**
 If `use_finite_mc_correction_binned` is True, the pure Poisson distribution is convoluted with a Gamma prior, shifting the likelihood to a Negative Binomial distribution. PyFC implements the marginalized effective likelihood $\mathcal{L}_{\text{Eff}}$ derived by Argüelles, Schneider & Yuan (2019) [arXiv:1901.04645] -- see "Methodology References" below -- with

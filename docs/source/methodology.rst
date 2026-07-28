@@ -94,11 +94,19 @@ where:
 * :math:`\mathcal{L}(\boldsymbol{\theta}, \hat{\hat{\boldsymbol{\nu}}} | \text{data})` is the conditional MLE, evaluated at a fixed point :math:`\boldsymbol{\theta}_{\text{test}}`.
 
 **Binned Likelihood**
-PyFC evaluates the Negative Log-Likelihood (NLL) for binned configurations:
+PyFC evaluates the saturated (Baker-Cousins) form of the Negative Log-Likelihood for
+binned configurations -- the likelihood ratio relative to the saturated model
+(:math:`\mu_i = n_i`) -- dropping the data-only constant :math:`\ln(n_i!)` term:
 
 .. math::
 
-   -\ln \mathcal{L}_{\text{Poisson}} = \sum_{i=1}^{N} \left( \mu_i(\boldsymbol{\theta}) - n_i \ln \mu_i(\boldsymbol{\theta}) \right)~,
+   -\ln \mathcal{L}_{\text{Poisson}} = \sum_{i=1}^{N} \left( \mu_i(\boldsymbol{\theta}) - n_i + n_i \ln\frac{n_i}{\mu_i(\boldsymbol{\theta})} \right)~,
+
+PyFC's implementation carries an extra overall factor of 2 relative to this
+expression -- it computes :math:`-2\ln \mathcal{L}_{\text{Poisson}}` directly,
+matching the Baker-Cousins/Wilks convention used for the PLR test statistic
+:math:`t` itself (see above), so no separate doubling is needed when forming
+:math:`t = \text{NLL}_{\text{cond}} - \text{NLL}_{\text{uncond}}`.
 
 **Finite Monte Carlo Correction:**
 If enabled, this accounts for limited simulation statistics using the marginalized
