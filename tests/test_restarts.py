@@ -114,7 +114,7 @@ def test_minimize_with_restarts_multi_start_keeps_best():
 def test_minimize_with_restarts_n_restarts_1_backward_compatible_call_shape():
     """
     With n_restarts=1 and a converging fit, the single call made must use exactly
-    the x0/bounds/method/kwargs passed in -- i.e. behaves like the pre-FIX-4
+    the x0/bounds/method/kwargs passed in -- i.e. behaves like the original
     direct `optimize.minimize(...)` call.
     """
     captured = {}
@@ -200,7 +200,7 @@ def test_orchestrator_neighbor_seeding_passes_previous_point_as_seed(tmp_path):
 
 
 def test_orchestrator_neighbor_seeding_disabled_via_flag(tmp_path):
-    """neighbor_seeding=False must restore the pre-FIX-4 behavior: always seed=None."""
+    """neighbor_seeding=False must restore the original behavior: always seed=None."""
     calls = []
 
     def fake_conditional_fit_1d_scipy(test_val, fix_idx, n_params_, data, bounds_list,

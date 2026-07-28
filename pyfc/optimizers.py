@@ -195,7 +195,7 @@ def _minimize_with_restarts(cost, x0, bounds, method, extra_kwargs, n_restarts=1
     (previously ignored entirely -- only `res.fun`/`res.x` were read).
 
     With the default `n_restarts=1`, this still runs a single optimization
-    from `x0` (identical to the pre-FIX-4 call), but now additionally: if
+    from `x0` (identical to the original single-fit call), but now additionally: if
     that single attempt does not converge, it retries once from a randomly
     perturbed starting point (cheap -- it only costs extra evaluations on
     the fits that actually need it) and logs a warning if even the retry
@@ -224,7 +224,7 @@ def _minimize_with_restarts(cost, x0, bounds, method, extra_kwargs, n_restarts=1
         `constraints`).
     n_restarts : int, optional
         Number of distinct starting points to try (default 1: unchanged
-        pre-FIX-4 behavior, aside from the res.success check above).
+        original behavior, aside from the res.success check above).
     rng : np.random.Generator, optional
         Random generator for the randomized restart points.
     label : str, optional
@@ -333,7 +333,7 @@ def unconditional_fit_scipy(data, n_params, bounds_list, compute_rates_func, see
     n_restarts : int, optional
         Number of distinct starting points to try, keeping whichever
         converges to the lowest NLL (see `_minimize_with_restarts`). Default
-        1 preserves pre-FIX-4 behavior (a single fit from `x0`), except that
+        1 preserves the original single-fit behavior (a single fit from `x0`), except that
         `res.success` is now always checked; a non-converged result
         triggers one cheap perturbed retry and a warning if that also fails.
 
@@ -419,7 +419,7 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, bounds_list, com
         physical (e.g. `f_mu <= 1 - f_e_test`), which also fixes the default
         bounds-midpoint starting guess so it can never land in forbidden
         territory. If None (default), each free parameter uses its static
-        `bounds_list[i]` unmodified -- identical to pre-FIX-2 behavior.
+        `bounds_list[i]` unmodified -- identical to the behavior before `bounds_func` existed.
     constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
         Joint constraints among the FULL n_params vector (see module
         docstring and `_project_linear_constraint`). Since `fix_idx` is not
@@ -436,7 +436,7 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, bounds_list, com
     n_restarts : int, optional
         Number of distinct starting points to try, keeping whichever
         converges to the lowest NLL (see `_minimize_with_restarts`). Default
-        1 preserves pre-FIX-4 behavior (a single fit from `x0`), except that
+        1 preserves the original single-fit behavior (a single fit from `x0`), except that
         `res.success` is now always checked; a non-converged result
         triggers one cheap perturbed retry and a warning if that also fails.
 
@@ -545,7 +545,7 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, bou
         `bounds_func({fix_A: test_vA, fix_B: test_vB}, free_indices, bounds_list)`
         and must return one `(lo, hi)` tuple per entry of `free_indices`, in
         that order. If None (default), each free parameter uses its static
-        `bounds_list[i]` unmodified -- identical to pre-FIX-2 behavior.
+        `bounds_list[i]` unmodified -- identical to the behavior before `bounds_func` existed.
     constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
         Joint constraints among the FULL n_params vector, projected down to
         the free-parameter subspace (substituting `test_vA`/`test_vB` as a
@@ -558,7 +558,7 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, bou
     n_restarts : int, optional
         Number of distinct starting points to try, keeping whichever
         converges to the lowest NLL (see `_minimize_with_restarts`). Default
-        1 preserves pre-FIX-4 behavior (a single fit from `x0`), except that
+        1 preserves the original single-fit behavior (a single fit from `x0`), except that
         `res.success` is now always checked; a non-converged result
         triggers one cheap perturbed retry and a warning if that also fails.
 
@@ -785,7 +785,7 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, bounds_list,
         `bounds_func({fix_idx: test_val}, free_indices, bounds_list)` and must
         return one `(lo, hi)` tuple per entry of `free_indices`, in that
         order. If None (default), each free parameter uses its static
-        `bounds_list[i]` unmodified -- identical to pre-FIX-2 behavior.
+        `bounds_list[i]` unmodified -- identical to the behavior before `bounds_func` existed.
     constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
         Joint constraints among the full n_params vector, evaluated directly
         on the fully-assembled parameter point (no projection needed --
@@ -895,7 +895,7 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
         `bounds_func({fix_A: test_vA, fix_B: test_vB}, free_indices, bounds_list)`
         and must return one `(lo, hi)` tuple per entry of `free_indices`, in
         that order. If None (default), each free parameter uses its static
-        `bounds_list[i]` unmodified -- identical to pre-FIX-2 behavior.
+        `bounds_list[i]` unmodified -- identical to the behavior before `bounds_func` existed.
     constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
         Joint constraints among the full n_params vector, evaluated directly
         on the fully-assembled parameter point (no projection needed). If
