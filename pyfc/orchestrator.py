@@ -470,7 +470,7 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
         neighbor-seeded start plus a fresh bounds-midpoint start, keeping
         whichever is better), so a bad neighbor optimum can't silently
         cascade forward across many subsequent grid points. Set False to
-        disable and always start from the bounds midpoint (pre-FIX-4
+        disable and always start from the bounds midpoint (the original
         behavior for the data fit).
 
     Returns:
@@ -771,31 +771,22 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
                 neighbor_seed = _lookup_2d_neighbor_seed(i, j) if strategy == "scipy" else None
                 effective_n_restarts = max(n_restarts, 2) if neighbor_seed is not None else n_restarts
 
-                # Step 1. Exact Data NLL Calculation (Profiling out remaining nuisance pars)
-                if np.isnan(results[f"2d_t_data_{pair_name}"][i, j]):
-                    if strategy == "grid":
-                        if likelihood_type == "binned":
-                            cond_nll, prof_p = conditional_fit_grid_2d(p_A, p_B, fix_A, fix_B, n_params, data, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc_correction_binned, compute_rates_func)
-                        else:
-                            cond_nll, prof_p = conditional_fit_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, n_params, data, pdf_components, cond_grid_points, compute_rates_func)
-                    elif strategy in ["ultranest", "hybrid"]:
-                        cond_nll, prof_p = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
-                    elif strategy == "scipy":
-                        cond_nll, prof_p = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, seed=neighbor_seed, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, n_restarts=effective_n_restarts)
+                # Step 1. Exact Data NLL Calculation (Profiling out remaining nuisance pars).
+                # 2d_t_data is always NaN at this point -- the guard at the top of this
+                # function already returned otherwise -- so there is only one case to
+                # handle here, not a NaN/already-computed branch.
+                if strategy == "grid":
+                    if likelihood_type == "binned":
+                        cond_nll, prof_p = conditional_fit_grid_2d(p_A, p_B, fix_A, fix_B, n_params, data, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc_correction_binned, compute_rates_func)
+                    else:
+                        cond_nll, prof_p = conditional_fit_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, n_params, data, pdf_components, cond_grid_points, compute_rates_func)
+                elif strategy in ["ultranest", "hybrid"]:
+                    cond_nll, prof_p = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
+                elif strategy == "scipy":
+                    cond_nll, prof_p = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, seed=neighbor_seed, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, n_restarts=effective_n_restarts)
 
-                    results[f"2d_t_data_{pair_name}"][i, j] = max(0.0, cond_nll - data_uncond_nll)
-                    true_params = prof_p
-                else:
-                    # Rerun extremely rapid exact data fitting to retrieve the localized profiling if bypassing saved data.
-                    if strategy == "grid":
-                        if likelihood_type == "binned":
-                            _, true_params = conditional_fit_grid_2d(p_A, p_B, fix_A, fix_B, n_params, data, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc_correction_binned, compute_rates_func)
-                        else:
-                            _, true_params = conditional_fit_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, n_params, data, pdf_components, cond_grid_points, compute_rates_func)
-                    elif strategy in ["ultranest", "hybrid"]:
-                        _, true_params = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
-                    elif strategy == "scipy":
-                        _, true_params = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, seed=neighbor_seed, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, n_restarts=effective_n_restarts)
+                results[f"2d_t_data_{pair_name}"][i, j] = max(0.0, cond_nll - data_uncond_nll)
+                true_params = prof_p
 
                 if strategy == "scipy":
                     prof_params_2d[(i, j)] = true_params
@@ -1012,7 +1003,9 @@ if __name__ == "__main__":
             param_names=config["param_names"],
             smooth_1d=config["smooth_1d"],
             smooth_2d=config["smooth_2d"],
-            scipy_method=config.get("scipy_method")
+            scipy_method=config.get("scipy_method"),
+            n_restarts=config.get("n_restarts", 1),
+            neighbor_seeding=config.get("neighbor_seeding", True)
         )
 
     elif config["likelihood_type"] == "unbinned":
@@ -1113,5 +1106,7 @@ if __name__ == "__main__":
             param_names=config["param_names"],
             smooth_1d=config["smooth_1d"],
             smooth_2d=config["smooth_2d"],
-            scipy_method=config.get("scipy_method")
+            scipy_method=config.get("scipy_method"),
+            n_restarts=config.get("n_restarts", 1),
+            neighbor_seeding=config.get("neighbor_seeding", True)
         )
