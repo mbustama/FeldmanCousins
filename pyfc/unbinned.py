@@ -96,6 +96,18 @@ def calc_nll_unbinned(params, len_obs, probs, compute_rates_func):
     # Extending the trigger to include that sliver removes the discontinuity:
     # at p_events == p_floor exactly, both formulations already agree
     # (barrier is 0 there by construction).
+    # NaN entries in p_events are not "unphysical" in the sense the barrier
+    # below handles -- `p_events <= p_floor` is False for NaN, so without
+    # this check a NaN p_event would silently fall through into
+    # np.log(p_events) below, producing a NaN nll with no barrier, no
+    # warning, and no gradient direction for the optimizer to recover from
+    # (a quadratic barrier needs a finite distance-from-floor to be
+    # meaningful; NaN has none). A NaN p_event almost always means a bug in
+    # the user's compute_rates_func, so fail loudly here instead of
+    # corrupting the fit silently.
+    if np.any(np.isnan(p_events)):
+        raise ValueError("compute_rates_func returned a NaN per-event density (p_events). Check compute_rates_func for division by zero, sqrt/log of a negative number, or similar.")
+
     p_floor = 1e-12
     unphysical = p_events <= p_floor
     if np.any(unphysical):

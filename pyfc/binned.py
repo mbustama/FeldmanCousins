@@ -196,6 +196,31 @@ def calc_nll(params, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
         n_obs = float(N_obs_flat[i])
         mu_floor = 1e-12
 
+        # NaN mu_i is not "unphysical" in the sense the barrier below
+        # handles -- `mu_i <= mu_floor` is False for NaN, so without this
+        # check NaN would silently fall through into math.log(n_obs / mu_i)
+        # below, producing a NaN nll with no barrier, no warning, and no
+        # gradient direction for the optimizer to recover from (a quadratic
+        # barrier needs a finite distance-from-floor to be meaningful; NaN
+        # has none). A NaN mu_i almost always means a bug in the user's
+        # compute_rates_func (e.g. division by zero, sqrt/log of a negative
+        # number), so fail loudly here instead of corrupting the fit silently.
+        #
+        # NaN detection here deliberately avoids math.isnan(mu_i)/np.isnan(mu_i)/
+        # (mu_i != mu_i): this function (and every caller in its nopython
+        # call chain, e.g. unconditional_fit_grid) is @njit(fastmath=True),
+        # and numba's fastmath compiles under LLVM's "assume no NaN/Inf"
+        # flags, which makes ALL THREE of those standard NaN checks silently
+        # return False for a genuine NaN under fastmath -- verified directly
+        # before writing this. Reinterpreting the float64's raw bits as an
+        # int64 and checking the IEEE-754 NaN bit pattern (exponent all 1s,
+        # mantissa nonzero) uses only integer bitwise ops, which fastmath's
+        # floating-point assumptions do not touch.
+        mu_i_bits = np.array([mu_i], dtype=np.float64).view(np.int64)[0]
+        mu_i_is_nan = ((mu_i_bits >> 52) & 0x7FF) == 0x7FF and (mu_i_bits & 0xFFFFFFFFFFFFF) != 0
+        if mu_i_is_nan:
+            raise ValueError("compute_rates_func returned a NaN expected count (mu). Check compute_rates_func for division by zero, sqrt/log of a negative number, or similar.")
+
         # Triggered for mu_i <= mu_floor, not just mu_i <= 0: the physical
         # branch's own Poisson term below diverges to +inf as mu_i -> 0+, while
         # this branch's base term is constant (evaluated at the fixed

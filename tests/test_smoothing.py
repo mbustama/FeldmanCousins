@@ -255,3 +255,55 @@ def test_unbinned_calc_nll_elementwise_not_any_collapsed():
     nll_b = calc_nll_unbinned(np.array([-0.1, -2.0]), 2, [np.array([1.0, 1.0]), np.array([1.0, 1.0])], rate_func)
     assert nll_a != nll_b
     assert nll_b > nll_a  # second event further into unphysical territory -> larger penalty
+
+
+# --- NaN handling: a bug in the user's compute_rates_func (e.g. a division
+# by zero) should fail loudly, not silently corrupt the NLL. Both
+# `mu_i <= mu_floor` (binned) and `p_events <= p_floor` (unbinned) are
+# False for NaN, so without an explicit check, NaN falls through into
+# math.log(NaN)/np.log(NaN), producing a silent NaN NLL with no barrier
+# and no warning. ---
+def test_binned_calc_nll_raises_on_nan_mu():
+    """
+    Regression test, also pins down a subtlety: calc_nll is
+    @njit(fastmath=True), and numba's fastmath compiles under LLVM's
+    "assume no NaN" flag, which makes math.isnan(x)/np.isnan(x)/(x != x)
+    ALL silently return False for a genuine NaN under fastmath -- verified
+    directly while writing this fix. The actual check must avoid
+    floating-point predicates entirely (see calc_nll's own comment for the
+    bit-pattern approach used), so this test exists specifically to catch
+    a future "simplification" back to a fastmath-broken check.
+    """
+    @njit(fastmath=True, nogil=True)
+    def rate_func_nan(params, S_s2, B_s2):
+        return np.array([np.nan]), np.array([0.0])
+
+    with pytest.raises(ValueError, match="NaN"):
+        calc_nll(np.array([1.0]), np.array([5.0]), np.zeros(1), np.zeros(1), False, rate_func_nan)
+
+
+def test_binned_calc_nll_nan_check_does_not_affect_normal_or_unphysical_values():
+    """The NaN guard must be a no-op for every ordinary finite mu_i, physical or not."""
+    @njit(fastmath=True, nogil=True)
+    def rate_func_physical(params, S_s2, B_s2):
+        return np.array([params[0]]), np.array([0.0])
+
+    @njit(fastmath=True, nogil=True)
+    def rate_func_unphysical(params, S_s2, B_s2):
+        return np.array([-1.0]), np.array([0.0])
+
+    got_physical = calc_nll(np.array([5.0]), np.array([3.0]), np.zeros(1), np.zeros(1), False, rate_func_physical)
+    expected_physical = 2.0 * (5.0 - 3.0 + 3.0 * math.log(3.0 / 5.0))
+    assert got_physical == pytest.approx(expected_physical, rel=1e-12)
+
+    got_unphysical = calc_nll(np.array([5.0]), np.array([3.0]), np.zeros(1), np.zeros(1), False, rate_func_unphysical)
+    assert np.isfinite(got_unphysical)
+    assert got_unphysical > 1000.0  # barrier should dominate, but not raise
+
+
+def test_unbinned_calc_nll_raises_on_nan_p_events():
+    def rate_func_nan(params, probs):
+        return 1.0, np.array([np.nan, 1.0, 2.0])
+
+    with pytest.raises(ValueError, match="NaN"):
+        calc_nll_unbinned(np.array([1.0]), 3, [np.array([1.0, 1.0, 1.0])], rate_func_nan)
