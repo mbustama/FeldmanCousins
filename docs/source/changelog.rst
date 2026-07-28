@@ -438,6 +438,56 @@ Fixed
   default. Unified all four; the wizard's defaults now match everywhere
   else exactly, so pressing Enter on every question reproduces
   ``compute_fc_intervals``'s own defaults.
+* **README's "Optimizer Strategy" section claimed PyFC discards a
+  non-converged toy and automatically generates a replacement to preserve
+  exact ``N_toys`` statistics -- no such mechanism exists anywhere in the
+  codebase.** Confirmed by exhaustive grep across ``toys.py``/``binned.py``/
+  ``unbinned.py``: toy-generation code never inspects a toy's own fit
+  convergence, and ``optimizers.py``'s ``_minimize_with_restarts`` (which
+  does check ``res.success``, retry once, and warn on non-convergence)
+  applies identically to data fits and toy fits alike -- it does not
+  discard or regenerate anything. Whatever ``t_stat`` comes out of a
+  non-converged toy fit is used exactly like any other toy's result.
+  Corrected the README bullet to describe actual behavior (a
+  ``warnings.warn`` message on persistent non-convergence, no
+  discard/regeneration, no ``verbose`` gating on the warning either --
+  also inaccurately claimed). Actually implementing discard-and-replace
+  was considered and deliberately deferred as a separate,
+  carefully-scoped follow-up if ever wanted, since it would be a genuine
+  new statistical feature (changing which toys contribute to the
+  empirical critical-value distribution) rather than a documentation fix.
+* **README.md's and ``docs/source/methodology.rst``'s displayed "Binned
+  Likelihood" formula did not match ``calc_nll``'s actual
+  implementation.** The docs showed the simple, non-saturated, single
+  (not doubled) Poisson NLL (``mu_i - n_i*ln(mu_i)``), while ``calc_nll``'s
+  own docstring and its actual ``n_obs > 0`` branch compute the
+  saturated, doubled Baker-Cousins form
+  (``2*(mu_i - n_i + n_i*ln(n_i/mu_i))``). Verified numerically: for a
+  single-bin toy ``(mu_i=5, n_i=3)``, the old displayed formula gives
+  ``0.172`` while ``calc_nll`` actually returns ``0.935``, matching the
+  corrected formula exactly. Because ``t_data = NLL_cond - NLL_uncond`` is
+  a difference evaluated at the same data in both fits, the missing
+  saturation/doubling terms cancel exactly -- **this was a
+  documentation-only bug; the FC interval construction itself was never
+  affected** -- but ``results["data_uncond_nll"]`` and any other absolute
+  NLL value PyFC reports would not match a reader's by-hand calculation
+  from the old formula. Corrected both docs to the saturated, doubled
+  formula, with an added note on the factor-of-2 convention (``calc_nll``
+  computes ``-2 ln L`` directly, matching the Baker-Cousins/Wilks
+  convention used for ``t`` itself, so no separate doubling is needed
+  when forming ``t``).
+* **``n_restarts`` and ``neighbor_seeding`` (``compute_fc_intervals``
+  parameters, tested since ``tests/test_restarts.py``) were never wired
+  into the CLI/JSON config system** -- the only two parameters (excluding
+  inherently non-serializable ones) missing from ``config.py``'s
+  argparse/base-config dicts, ``generate_config.py``'s interactive
+  wizard, README's and :doc:`configuration`'s parameter tables, and
+  ``config/example_fc_config.json``, unlike every other tunable knob.
+  Reachable only via a direct Python call, not through the documented
+  CLI/JSON workflow. Wired both through end to end, matching the existing
+  pattern used for ``warm_start``/``toy_batch_size``; the new wizard
+  questions default to ``n_restarts=1``/``neighbor_seeding=True``,
+  matching ``compute_fc_intervals``'s own defaults.
 
 Added
 ~~~~~
