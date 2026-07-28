@@ -48,6 +48,10 @@ TEST_PARAMS_3C = [
     np.array([2.0, 0.5, 1.5]),
 ]
 
+# Deliberately small for harness speed (this runs on every invocation, unlike
+# the dedicated test suite). Below toys.ADAPTIVE_MIN_TOYS (100), so this
+# harness never exercises adaptive_toys's actual early-stopping behavior --
+# that needs its own dedicated coverage instead, see tests/test_adaptive_toys.py.
 N_TOYS = 15
 CL = [0.90]
 NUM_CORES = 1
