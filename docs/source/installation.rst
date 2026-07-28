@@ -102,7 +102,8 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── 03_pyfc_non_contiguous_data_tutorial.ipynb   # Passing non-contiguous (transposed) N-D data arrays directly
    │   ├── 04_pyfc_algorithmic_features_tutorial.ipynb  # sparsify_grid / smooth_1d,2d / finite-MC correction, on vs. off
    │   ├── 05_pyfc_strategy_comparison_tutorial.ipynb   # grid/scipy/hybrid strategy comparison + custom plotting from disk
-   │   └── 06_pyfc_joint_constraints_tutorial.ipynb     # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
+   │   ├── 06_pyfc_joint_constraints_tutorial.ipynb     # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
+   │   └── 07_pyfc_checkpointing_tutorial.ipynb         # Interrupting (SIGTERM) and resuming a real run via warm_start
    ├── pyfc/                            # Main Python package
    │   ├── __init__.py                  # Package initialization and metadata
    │   ├── binned.py                    # Binned NLL math and Numba-accelerated optimizers

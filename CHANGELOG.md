@@ -487,6 +487,19 @@ data.
   (admonitions, cross-references) mean a byte-for-byte diff or a generic
   Markdown-to-RST converter isn't viable. See the script's module
   docstring for exactly what is and isn't checked.
+- New example notebook, `examples/07_pyfc_checkpointing_tutorial.ipynb`:
+  demonstrates `warm_start` checkpointing/resume against a genuinely
+  interrupted run, not a simulated one. Launches a real
+  `compute_fc_intervals` call in a `multiprocessing.Process`, lets it run
+  long enough for one parameter's 1D scan to checkpoint, sends it
+  `SIGTERM` (via `.terminate()`, the same signal a Slurm walltime kill
+  sends), inspects the resulting `checkpoint_fc.npz` to confirm a genuine
+  partial state, then resumes with the identical call and `warm_start=True`.
+  Verifies correctness (not just "it finished") two ways: the resumed run
+  completes measurably faster than a fresh reference run (the checkpointed
+  parameter wasn't recomputed), and the checkpointed parameter's data test
+  statistic (a deterministic quantity, no MC randomness involved) matches
+  the reference run's value exactly.
 
 ## [0.9.2] and earlier
 

@@ -153,7 +153,8 @@ FeldmanCousins/
 │   ├── 03_pyfc_non_contiguous_data_tutorial.ipynb   # Passing non-contiguous (transposed) N-D data arrays directly
 │   ├── 04_pyfc_algorithmic_features_tutorial.ipynb  # sparsify_grid / smooth_1d,2d / finite-MC correction, on vs. off
 │   ├── 05_pyfc_strategy_comparison_tutorial.ipynb   # grid/scipy/hybrid strategy comparison + custom plotting from disk
-│   └── 06_pyfc_joint_constraints_tutorial.ipynb     # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
+│   ├── 06_pyfc_joint_constraints_tutorial.ipynb     # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
+│   └── 07_pyfc_checkpointing_tutorial.ipynb         # Interrupting (SIGTERM) and resuming a real run via warm_start
 ├── pyfc/                            # Main Python package
 │   ├── __init__.py                  # Package initialization and metadata
 │   ├── binned.py                    # Binned NLL math and Numba-accelerated optimizers
@@ -331,7 +332,7 @@ results = compute_fc_intervals(
 
 ## Tutorial Notebooks
 
-The `examples/` directory contains six runnable Jupyter notebooks, numbered `01`-`06` in the
+The `examples/` directory contains seven runnable Jupyter notebooks, numbered `01`-`07` in the
 order we'd suggest reading them. Each one is self-contained (states its own imports and mock
 data) and ends with a "Next steps" pointer to the notebooks that naturally follow it, so you
 can also jump straight to whichever topic matches your own project.
@@ -344,8 +345,9 @@ can also jump straight to whichever topic matches your own project.
 | 04 | [`pyfc_algorithmic_features_tutorial.ipynb`](examples/04_pyfc_algorithmic_features_tutorial.ipynb) | The `sparsify_grid`, `smooth_1d`/`smooth_2d`, and `use_finite_mc_correction_binned` knobs, each demonstrated on vs. off -- plus how disconnected accepted intervals get reported. | You need to speed up a 2D scan, polish a plot, or your MC templates have limited statistics. |
 | 05 | [`pyfc_strategy_comparison_tutorial.ipynb`](examples/05_pyfc_strategy_comparison_tutorial.ipynb) | Benchmarking `"grid"`/`"scipy"`/`"hybrid"`/`"ultranest"` on the same model, then building a fully custom Matplotlib figure directly from PyFC's saved `.json`/`.npz` output (no dependency on `generate_corner_plot`). | You're choosing an optimizer strategy, or you want a publication-quality figure beyond PyFC's built-in plot. |
 | 06 | [`pyfc_joint_constraints_tutorial.ipynb`](examples/06_pyfc_joint_constraints_tutorial.ipynb) | Reproducing and fixing the flat-gradient optimizer trap that comes from a joint (non-box) constraint like a simplex ($f_e + f_\mu \leq 1$), using `bounds_func` and `constraints`. | Two or more of your parameters are linked by an inequality that a per-parameter `[lo, hi]` box can't express. |
+| 07 | [`pyfc_checkpointing_tutorial.ipynb`](examples/07_pyfc_checkpointing_tutorial.ipynb) | A genuinely-running `compute_fc_intervals` call, killed mid-analysis with `SIGTERM` (mimicking a Slurm walltime kill), then correctly resumed with `warm_start=True` -- with a checkpoint inspection and a determinism check proving nothing was silently recomputed or corrupted. | You're running on a preemptible/walltime-limited cluster, or just want to see the checkpointing "Salient Feature" actually happen. |
 
-`01`-`03` build on each other and are worth reading in order for a first project; `04`-`06`
+`01`-`03` build on each other and are worth reading in order for a first project; `04`-`07`
 are independent, narrower deep-dives you can read in any order once you need that specific
 capability. See also `docs/source/tutorials.rst` (rendered as part of the [hosted
 documentation](https://mbustama.github.io/FeldmanCousins/)) for the same guide.

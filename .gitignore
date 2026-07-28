@@ -12,6 +12,7 @@ examples/high_dimensional_output/
 examples/algorithmic_features_output/
 examples/strategy_comparison_output/
 examples/non_contiguous_output/
+examples/checkpointing_output/
 PyFeldmanCousins.egg-info/
 xbranch_compare/output/
 output/
