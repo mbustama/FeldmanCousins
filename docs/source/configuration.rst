@@ -73,3 +73,11 @@ Configuration Parameters
      - Traces contour perimeters in 2D space to skip resolving deep interior/exterior nodes.
      - ``True``, ``False``
      - ``False``
+   * - ``n_restarts``
+     - Number of distinct starting points tried per DATA fit (unconditional + every 1D/2D conditional fit), keeping whichever converges to the lowest NLL. Only affects ``strategy="scipy"``'s DATA fit, not the MC toy fits or other strategies.
+     - Integer :math:`> 0`
+     - ``1``
+   * - ``neighbor_seeding``
+     - Seeds each 1D/2D scan grid point's DATA fit from an adjacent, already-evaluated grid point's profiled parameters instead of always starting from the bounds midpoint. Only affects ``strategy="scipy"``'s DATA fit, not the MC toy fits or other strategies.
+     - ``True``, ``False``
+     - ``True``

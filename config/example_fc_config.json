@@ -11,6 +11,8 @@
     "adaptive_toys": true,
     "toy_batch_size": 200,
     "sparsify_grid": true,
+    "n_restarts": 1,
+    "neighbor_seeding": true,
     "warm_start": true,
     "output_file": "fc_results",
     "save_log": true,

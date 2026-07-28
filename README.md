@@ -228,6 +228,8 @@ The script will prompt you with questions regarding your likelihood type, number
     "adaptive_toys": true,
     "toy_batch_size": 200,
     "sparsify_grid": false,
+    "n_restarts": 1,
+    "neighbor_seeding": true,
     "warm_start": true,
     "output_file": "fc_results",
     "save_log": true,
@@ -389,6 +391,8 @@ Comprehensive documentation for PyFC is hosted on GitHub Pages. It includes a qu
 | `adaptive_toys` | Dynamically stops toy generation early once a grid point's accept/reject verdict is statistically settled (strict 99.9% confidence, never before 100 toys), saving compute time. Only for `strategy` in `"scipy"`/`"ultranest"`/`"hybrid"`; no effect for `"grid"`. | `True`, `False` | `True` |
 | `toy_batch_size` | Chunk size for submitting/collecting toys from the executor (bounds peak memory for `likelihood_type="unbinned"`; also the granularity of `adaptive_toys`' stopping checks). Same total `n_toys` either way. Only for `strategy` in `"scipy"`/`"ultranest"`/`"hybrid"`; no effect for `"grid"`. | Integer `> 0` | `200` |
 | `sparsify_grid` | Traces contour perimeters in 2D space to skip resolving deep interior/exterior nodes. | `True`, `False` | `False` |
+| `n_restarts` | Number of distinct starting points tried per DATA fit (the unconditional fit and every 1D/2D conditional fit), keeping whichever converges to the lowest NLL. Only affects `strategy="scipy"`'s DATA fit -- not the MC toy fits (already well-seeded from the conditional MLE), not other strategies. `res.success` is always checked and non-convergence retried once regardless of this setting; `n_restarts` controls additional restarts beyond that. | Integer `> 0` | `1` |
+| `neighbor_seeding` | When True, seeds each 1D/2D scan grid point's DATA fit from an adjacent, already-evaluated grid point's profiled parameters instead of always starting from the bounds midpoint (whenever used, the effective restart count for that point is also raised to at least 2, so a bad neighbor optimum can't silently cascade forward). Only affects `strategy="scipy"`'s DATA fit -- not the MC toy fits, not other strategies. | `True`, `False` | `True` |
 | `save_log` | Pipes output directly to a persistent text log file. | `True`, `False` | `True` |
 | `save_directory` | Directory path where final results, plots, and checkpoints reside. | String (path) | `"output/example_fc_output"` |
 | `output_file` | Prefix for the serialized `.npz` and `.json` result data structures. | String | `"fc_results"` |

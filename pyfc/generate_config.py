@@ -338,27 +338,41 @@ def main():
         cast_func=parse_bool
     )
 
+    config["n_restarts"] = get_input(
+        "17. Number of restarts per DATA fit (scipy strategy only; keeps the lowest-NLL result)?",
+        default_val=1,
+        cast_func=int,
+        validator=lambda x: x > 0,
+        error_msg="Number of restarts must be a positive integer."
+    )
+
+    config["neighbor_seeding"] = get_input(
+        "18. Seed each DATA fit from an adjacent grid point's profiled parameters (y/n)?",
+        default_val="y",
+        cast_func=parse_bool
+    )
+
     # --- File I/O ---
     config["save_log"] = get_input(
-        "17. Save output to a log file (y/n)?",
+        "19. Save output to a log file (y/n)?",
         default_val="y",
         cast_func=parse_bool
     )
 
     config["save_directory"] = get_input(
-        "18. Output directory path?",
+        "20. Output directory path?",
         default_val="output/example_fc_output",
         cast_func=str
     )
 
     config["output_file"] = get_input(
-        "19. Output file prefix (without extension)?",
+        "21. Output file prefix (without extension)?",
         default_val="fc_results",
         cast_func=str
     )
 
     out_json_path = get_input(
-        "20. Path to save this configuration file to?",
+        "22. Path to save this configuration file to?",
         default_val="fc_config.json",
         cast_func=str
     )

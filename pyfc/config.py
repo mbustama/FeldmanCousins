@@ -67,7 +67,9 @@ def generate_sample_config(filename="../config/example_fc_config.json"):
         "param_names": ["param1", "param2", "param3"],
         "smooth_1d": True,
         "smooth_2d": True,
-        "scipy_method": None
+        "scipy_method": None,
+        "n_restarts": 1,
+        "neighbor_seeding": True
     }
     with open(filename, 'w') as f:
         json.dump(default_config, f, indent=4)
@@ -127,7 +129,9 @@ def parse_arguments():
     parser.add_argument('--param_names', type=str, nargs='+', default=argparse.SUPPRESS)
     parser.add_argument('--smooth_1d', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
     parser.add_argument('--smooth_2d', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
-    
+    parser.add_argument('--n_restarts', type=int, help="Number of distinct starting points to try per DATA fit (scipy strategy), keeping whichever converges to the lowest NLL", default=argparse.SUPPRESS)
+    parser.add_argument('--neighbor_seeding', type=lambda x: str(x).lower() in ['true', '1', 'yes'], help="Seed each DATA fit (scipy strategy) from an adjacent grid point's profiled parameters instead of always starting from the bounds midpoint", default=argparse.SUPPRESS)
+
     args = parser.parse_args()
     
     if args.generate_config:
@@ -155,7 +159,9 @@ def parse_arguments():
         "param_names": ["param1", "param2", "param3"],
         "smooth_1d": True,
         "smooth_2d": True,
-        "scipy_method": None
+        "scipy_method": None,
+        "n_restarts": 1,
+        "neighbor_seeding": True
     }
     
     if hasattr(args, 'config_file'):
