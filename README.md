@@ -542,7 +542,13 @@ If your script is interrupted, simply run it again. PyFC will detect the `checkp
 
 ### Stored Results & Custom Plotting
 Upon successful completion, the pipeline outputs final structures directly to your `save_directory` (default: `output/example_fc_output/`):
-* **`fc_results.json`**: A dictionary containing structural metadata, evaluated interval bounds, exact confidence levels, the global unconditional best-fit coordinate, and the explicit `data_uncond_nll` required for cross-model ratio comparisons. **Important:** The internal keys nested under `"1d_intervals"` and `"2d_intervals"` are strictly mapped by integer index (e.g., `"param1"`, `"param2"`), entirely ignoring any custom string values you passed to the `param_names` configuration list. 
+* **`fc_results.json`**: A dictionary containing structural metadata, evaluated interval bounds, exact confidence levels, the global unconditional best-fit coordinate, and the explicit `data_uncond_nll` required for cross-model ratio comparisons. **Important:** The internal keys nested under `"1d_intervals"` and `"2d_intervals"` are strictly mapped by integer index (e.g., `"param1"`, `"param2"`), entirely ignoring any custom string values you passed to the `param_names` configuration list.
+
+  **`interval_bounds` schema:** `1d_intervals.{param}.thresholds.{cl}.interval_bounds` is always a **list of `[lo, hi]` pairs**, one per maximal *contiguous* run of accepted grid points -- never a single flat `[lo, hi]` pair, even when there's only one interval. Under the Feldman-Cousins unified construction, the accepted region for a parameter can in principle be genuinely disconnected near certain physical boundaries (e.g. a non-monotonic rate function crossing the data at more than one point); reporting a single min/max span would silently merge those separate intervals together, including whatever rejected gap sits between them. A two-interval example:
+  ```json
+  "interval_bounds": [[0.5, 0.9], [1.3, 1.6]]
+  ```
+  and the common single-interval case is still a one-element list, `[[0.5, 0.9]]`, for a consistent schema regardless of how many disjoint pieces the accepted region has. See `pyfc_algorithmic_features_tutorial.ipynb`'s "Disconnected accepted intervals" section for a concrete worked example. (2D `interval_bounds` are not precomputed -- `2d_intervals` stores the full accepted boolean grid instead, from which any 2D region shape, connected or not, can already be reconstructed directly.)
 * **`fc_results.npz`**: A highly compressed NumPy archive containing exact parameter matrices and boolean masks. The keys are built dynamically based on the integer index of the parameter arrays:
 
 **Available `.npz` Keys (Where `{i}` and `{j}` correspond to 1-based grid array indices like 1, 2, 3):**

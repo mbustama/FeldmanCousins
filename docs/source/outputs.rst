@@ -15,6 +15,21 @@ Upon successful completion, outputs are saved to your directory (default: ``outp
 * **``fc_results.json``**: Contains structural metadata, evaluated bounds, exact confidence levels, and the global unconditional best-fit coordinate.
 * **``fc_results.npz``**: A highly compressed NumPy archive containing exact parameter matrices and boolean masks.
 
+.. note::
+   **1D ``interval_bounds`` are a list of pairs, not a single pair.**
+   ``fc_results.json``'s ``1d_intervals.{param}.thresholds.{cl}.interval_bounds``
+   is always a list of ``[lo, hi]`` pairs, one per maximal *contiguous* run of
+   accepted grid points -- e.g. ``[[0.5, 0.9], [1.3, 1.6]]`` for a disconnected
+   region, or ``[[0.5, 0.9]]`` for the common single-interval case. Under the
+   Feldman-Cousins unified construction, the accepted region for a parameter
+   can in principle be genuinely disconnected near certain physical
+   boundaries; reporting a single min/max span across all accepted points
+   would silently merge separate intervals together, including whatever
+   rejected gap sits between them. 2D intervals have no analogous
+   precomputed field -- ``2d_intervals`` stores the full accepted boolean
+   grid instead, from which any region shape can already be reconstructed
+   directly.
+
 .. list-table:: Available ``.npz`` Keys (Where ``{i}`` and ``{j}`` are 1-based indices)
    :widths: 30 50 20
    :header-rows: 1

@@ -86,6 +86,37 @@ data.
 - **Migration:** see the rewritten Quick Start Guide in `README.md` and
   `docs/source/quickstart.rst` for both binned and unbinned examples under
   the new signatures.
+- **`fc_results.json`'s 1D `interval_bounds` schema changed from a flat
+  `[lo, hi]` pair to a list of `[lo, hi]` pairs, one per disconnected
+  accepted interval.** Previously, `_save_fc_json` computed a single
+  `[min(accepted), max(accepted)]` span across every accepted grid point.
+  Under the Feldman-Cousins unified construction, the accepted region for
+  a parameter can in principle be genuinely disconnected near certain
+  physical boundaries (e.g. a non-monotonic rate function crossing the
+  data at more than one point); a flat min/max span silently merges those
+  separate intervals into one, including whatever rejected gap sits
+  between them -- misrepresenting the actual confidence region. A new
+  `_find_contiguous_intervals` helper in `orchestrator.py` now scans the
+  scan-ordered `test_points`/`accepted` arrays for every maximal
+  contiguous accepted run and reports each as its own `[lo, hi]` pair.
+  **This always applies, even in the single-interval case** (still a
+  one-element list, `[[lo, hi]]`, not flattened) -- a consistent schema
+  regardless of how many disjoint pieces the accepted region has.
+  **Migration:** any downstream code reading `interval_bounds` as
+  `[lo, hi]` directly (e.g. `lo, hi = interval_bounds`) must be updated to
+  iterate the list of pairs instead. 2D intervals are unaffected -- no
+  `interval_bounds`-style precomputed field existed there before or now;
+  `2d_intervals` stores the full accepted boolean grid, from which any
+  region shape can already be reconstructed directly. `fc_results.npz`
+  and `generate_corner_plot` are both unaffected -- neither ever consumed
+  `interval_bounds` (the `.npz` stores raw per-point arrays, and plotting
+  shades directly from those, not from the JSON's precomputed field).
+  Documented in README.md's "Stored Results & Custom Plotting" section
+  and `docs/source/outputs.rst`, with a worked example added to
+  `pyfc_algorithmic_features_tutorial.ipynb`. New tests for
+  `_find_contiguous_intervals` and the JSON-writing logic in
+  `tests/test_disconnected_intervals.py`, including a genuine (not
+  hand-mocked) end-to-end disconnected-region example.
 
 ### Changed
 

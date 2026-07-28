@@ -158,6 +158,46 @@ def _save_fc_archive(results, grids, output_path, cl, compute_1D_intervals, comp
     np.savez(output_path, **save_dict)
 
 
+def _find_contiguous_intervals(test_points, accepted):
+    """
+    Finds every maximal contiguous run of `accepted=True` in `test_points`
+    (assumed ascending, e.g. built from `np.linspace`) and returns one
+    `[lo, hi]` pair per run, in scan order.
+
+    Under the Feldman-Cousins unified construction, the accepted region
+    for a parameter can in principle be genuinely disconnected near
+    certain physical boundaries -- taking a single min/max across all
+    accepted points would silently merge separate intervals into one,
+    including whatever rejected gap sits between them.
+
+    Parameters:
+    -----------
+    test_points : array_like, 1D
+        The scanned parameter values, in ascending order.
+    accepted : array_like of bool, 1D
+        Same length as `test_points`; True where that point is inside the
+        confidence region.
+
+    Returns:
+    --------
+    list of [float, float]
+        One `[lo, hi]` pair per maximal contiguous accepted run, in scan
+        order. Empty list if nothing is accepted.
+    """
+    intervals = []
+    run_start = None
+    for val, is_acc in zip(test_points, accepted):
+        if is_acc and run_start is None:
+            run_start = val
+        elif not is_acc and run_start is not None:
+            intervals.append([run_start, prev_val])
+            run_start = None
+        prev_val = val
+    if run_start is not None:
+        intervals.append([run_start, prev_val])
+    return intervals
+
+
 def _save_fc_json(results, output_path, cl, compute_1D_intervals, compute_2D_intervals, n_params):
     """
     Exports computed 1D and 2D intervals to an external, human-readable JSON format.
@@ -203,14 +243,15 @@ def _save_fc_json(results, output_path, cl, compute_1D_intervals, compute_2D_int
             for c in cl:
                 accepted = results[f"1d_accepted_p{p_idx+1}"][c]
                 interval_bounds = []
-                
-                # Extract min and max bounds for the accepted points
+
+                # One [lo, hi] pair per maximal contiguous accepted run, not
+                # a single min/max across all accepted points -- the latter
+                # would silently merge disconnected accepted regions (a real
+                # possibility under the Feldman-Cousins unified construction)
+                # into one interval spanning whatever rejected gap sits
+                # between them.
                 if test_points is not None and accepted is not None:
-                    accepted_points = [
-                        val for val, is_acc in zip(test_points, accepted) if is_acc
-                    ]
-                    if accepted_points:
-                        interval_bounds = [min(accepted_points), max(accepted_points)]
+                    interval_bounds = _find_contiguous_intervals(test_points, accepted)
                 
                 json_dict["1d_intervals"][p_key]["thresholds"][str(c)] = {
                     "t_critical": results[f"1d_t_critical_p{p_idx+1}"][c],
