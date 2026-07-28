@@ -14,6 +14,8 @@ examples/strategy_comparison_output/
 examples/non_contiguous_output/
 examples/checkpointing_output/
 PyFeldmanCousins.egg-info/
+build/
+dist/
 xbranch_compare/output/
 output/
 fc_output/
