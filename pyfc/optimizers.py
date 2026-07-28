@@ -483,6 +483,15 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, bounds_list, com
     if len(free_bounds) == 0:
         p = np.zeros(n_params)
         p[fix_idx] = test_val
+        # No free parameters left to optimize over, so `constraints` was
+        # never projected into anything scipy could enforce (that only
+        # happens inside _minimize_with_restarts below, which this branch
+        # skips entirely). Check directly against the fully-assembled
+        # point instead, same flat-penalty convention used on the
+        # UltraNest side (module docstring) since there's no optimizer
+        # step here to get stuck in a flat-gradient trap.
+        if not _constraints_satisfied(constraints, p):
+            return 1e10, p
         return cost(np.array([])), p
 
     method = _resolve_scipy_method(projected_constraints, scipy_method)
@@ -599,6 +608,12 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, bou
         p = np.zeros(n_params)
         p[fix_A] = test_vA
         p[fix_B] = test_vB
+        # See conditional_fit_1d_scipy's identical branch for why this
+        # check is needed here: with no free parameters, `constraints` is
+        # never projected/enforced by _minimize_with_restarts below, which
+        # this branch skips entirely.
+        if not _constraints_satisfied(constraints, p):
+            return 1e10, p
         return cost(np.array([])), p
 
     method = _resolve_scipy_method(projected_constraints, scipy_method)
@@ -794,6 +809,12 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, bounds_list,
     if len(free_bounds) == 0:
         p = np.zeros(n_params)
         p[fix_idx] = test_val
+        # With no free parameters, `log_likelihood` below (which is where
+        # `_constraints_satisfied` normally gets checked) never runs --
+        # this branch returns directly instead. Check here too, same
+        # flat-penalty convention as the module's other constraint checks.
+        if not _constraints_satisfied(constraints, p):
+            return 1e10, p
         if likelihood_type == "unbinned":
             probs = [pdf(data) if len(data) > 0 else np.array([]) for pdf in pdf_components]
             return calc_nll_unbinned(p, len(data), probs, compute_rates_func), p
@@ -897,6 +918,11 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
         p = np.zeros(n_params)
         p[fix_A] = test_vA
         p[fix_B] = test_vB
+        # See conditional_fit_1d_ultranest's identical branch: with no
+        # free parameters, `log_likelihood` below (where
+        # `_constraints_satisfied` is normally checked) never runs.
+        if not _constraints_satisfied(constraints, p):
+            return 1e10, p
         if likelihood_type == "unbinned":
             probs = [pdf(data) if len(data) > 0 else np.array([]) for pdf in pdf_components]
             return calc_nll_unbinned(p, len(data), probs, compute_rates_func), p

@@ -13,9 +13,13 @@ from numba import njit
 
 from pyfc.optimizers import (
     SCIPY_AVAILABLE,
+    ULTRANEST_AVAILABLE,
     _constraints_satisfied,
     _project_linear_constraint,
     conditional_fit_1d_scipy,
+    conditional_fit_1d_ultranest,
+    conditional_fit_2d_scipy,
+    conditional_fit_2d_ultranest,
     optimize,
     unconditional_fit_scipy,
 )
@@ -127,6 +131,109 @@ def test_constraints_handle_two_simultaneously_free_nuisance_params():
     assert best_p[2] == 2.5
     assert best_p[0] + best_p[1] <= 1.0 + 1e-6
     assert np.isfinite(cond_nll)
+
+
+# --- Regression: constraints must still be enforced when the scan fixes
+# every parameter, leaving zero free parameters to optimize over. Each
+# conditional_fit_* function has a `len(free_bounds) == 0` early-return
+# path that bypasses its normal optimizer machinery (scipy's
+# `_minimize_with_restarts`/UltraNest's `log_likelihood` closure) entirely
+# -- constraints were never checked on that path, so a scan point that
+# individually violates a joint constraint would silently return an
+# ordinary finite NLL instead of being rejected like every other
+# constraint-violating point. Triggers whenever the number of
+# simultaneously-fixed scan parameters equals n_params exactly (1 for
+# conditional_fit_1d_*, 2 for conditional_fit_2d_*) -- a 2-parameter
+# constrained model with no extra nuisance parameters, a natural
+# simplification of this file's own flavor-fraction example.
+def _rate_func_2p(params, S_sumw2, B_sumw2):
+    mu = np.array([10.0 * params[0] + 10.0 * params[1] + 1.0])
+    return mu, S_sumw2
+
+
+_rate_func_2p_njit = njit(fastmath=True, nogil=True)(_rate_func_2p)
+
+
+def test_conditional_fit_1d_scipy_enforces_constraints_with_zero_free_params():
+    """n_params=1, the single parameter is the scan's fixed test value."""
+    @njit(fastmath=True, nogil=True)
+    def rate_func(params, S_sumw2, B_sumw2):
+        return np.array([10.0 * params[0] + 1.0]), S_sumw2
+
+    N_obs = np.array([15.0])
+    s2 = np.array([0.0])
+    constraint = optimize.LinearConstraint(np.array([[1.0]]), -np.inf, 0.5)
+
+    nll_violating, _ = conditional_fit_1d_scipy(
+        0.8, 0, 1, N_obs, [(0.0, 1.0)], rate_func, S_sumw2=s2, B_sumw2=s2, constraints=[constraint],
+    )
+    nll_satisfying, _ = conditional_fit_1d_scipy(
+        0.3, 0, 1, N_obs, [(0.0, 1.0)], rate_func, S_sumw2=s2, B_sumw2=s2, constraints=[constraint],
+    )
+    assert nll_violating == 1e10
+    assert nll_satisfying != 1e10
+    assert np.isfinite(nll_satisfying)
+
+
+def test_conditional_fit_2d_scipy_enforces_constraints_with_zero_free_params():
+    """n_params=2, both parameters are fixed by the 2D scan (f_e + f_mu <= 1)."""
+    N_obs = np.array([15.0])
+    s2 = np.array([0.0])
+    bounds_list = [(0.0, 1.0), (0.0, 1.0)]
+    constraint = optimize.LinearConstraint(np.array([[1.0, 1.0]]), -np.inf, 1.0)
+
+    nll_violating, _ = conditional_fit_2d_scipy(
+        0.8, 0.5, 0, 1, 2, N_obs, bounds_list, _rate_func_2p_njit,
+        S_sumw2=s2, B_sumw2=s2, constraints=[constraint],
+    )
+    nll_satisfying, _ = conditional_fit_2d_scipy(
+        0.3, 0.3, 0, 1, 2, N_obs, bounds_list, _rate_func_2p_njit,
+        S_sumw2=s2, B_sumw2=s2, constraints=[constraint],
+    )
+    assert nll_violating == 1e10
+    assert nll_satisfying != 1e10
+    assert np.isfinite(nll_satisfying)
+
+
+@pytest.mark.skipif(not ULTRANEST_AVAILABLE, reason="UltraNest is required for this test")
+def test_conditional_fit_1d_ultranest_enforces_constraints_with_zero_free_params():
+    @njit(fastmath=True, nogil=True)
+    def rate_func(params, S_sumw2, B_sumw2):
+        return np.array([10.0 * params[0] + 1.0]), S_sumw2
+
+    N_obs = np.array([15.0])
+    s2 = np.array([0.0])
+    constraint = optimize.LinearConstraint(np.array([[1.0]]), -np.inf, 0.5)
+
+    nll_violating, _ = conditional_fit_1d_ultranest(
+        0.8, 0, 1, N_obs, [(0.0, 1.0)], rate_func, verbose=0, S_sumw2=s2, B_sumw2=s2, constraints=[constraint],
+    )
+    nll_satisfying, _ = conditional_fit_1d_ultranest(
+        0.3, 0, 1, N_obs, [(0.0, 1.0)], rate_func, verbose=0, S_sumw2=s2, B_sumw2=s2, constraints=[constraint],
+    )
+    assert nll_violating == 1e10
+    assert nll_satisfying != 1e10
+    assert np.isfinite(nll_satisfying)
+
+
+@pytest.mark.skipif(not ULTRANEST_AVAILABLE, reason="UltraNest is required for this test")
+def test_conditional_fit_2d_ultranest_enforces_constraints_with_zero_free_params():
+    N_obs = np.array([15.0])
+    s2 = np.array([0.0])
+    bounds_list = [(0.0, 1.0), (0.0, 1.0)]
+    constraint = optimize.LinearConstraint(np.array([[1.0, 1.0]]), -np.inf, 1.0)
+
+    nll_violating, _ = conditional_fit_2d_ultranest(
+        0.8, 0.5, 0, 1, 2, N_obs, bounds_list, _rate_func_2p_njit,
+        verbose=0, S_sumw2=s2, B_sumw2=s2, constraints=[constraint],
+    )
+    nll_satisfying, _ = conditional_fit_2d_ultranest(
+        0.3, 0.3, 0, 1, 2, N_obs, bounds_list, _rate_func_2p_njit,
+        verbose=0, S_sumw2=s2, B_sumw2=s2, constraints=[constraint],
+    )
+    assert nll_violating == 1e10
+    assert nll_satisfying != 1e10
+    assert np.isfinite(nll_satisfying)
 
 
 # --- Method selection / backward compatibility ---
