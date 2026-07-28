@@ -92,13 +92,13 @@ pytest tests/ -v
 
 PyFC is protected by a Continuous Integration (CI) pipeline powered by GitHub Actions. Every time code is pushed or a Pull Request is opened, the CI automatically provisions pristine Ubuntu runners across a matrix of Python versions (e.g., 3.9, 3.10, 3.11). It installs PyFC entirely from scratch and executes the full test suite. This strict isolation eliminates "it works on my machine" biases and guarantees that new code contributions do not introduce regressions.
 
-The test suite executes the following verifications:
-* **Core imports & dependencies**: The suite validates that all framework modules can be imported successfully. It also checks that optional dependency flags for SciPy and UltraNest are correctly evaluated as booleans.
-* **I/O & checkpointing integrity**: The pipeline writes intermediate array states to a binary `.npz` checkpoint in a temporary directory. It then loads the file to assert that the arrays are perfectly reconstructed without data loss.
-* **Multiprocessing serialization**: To ensure safe HPC scaling, the test spawns a `ProcessPoolExecutor` to verify that top-level worker functions can be serialized across CPU cores without pickling errors. It validates that the isolated sub-processes return correct mathematical results.
-* **JIT compilation hooks**: The suite forces a simple Numba JIT compilation. This ensures that the host's LLVM compiler toolchain is properly installed and can execute `fastmath` and `nogil` directives.
-* **Optimizer boundary clamping**: The pipeline intentionally passes an optimizer seed that microscopically violates upper bound constraints. It verifies that the framework properly clamps the seed before SciPy throws a `ValueError`.
-* **Statistical Asimov convergence**: The optimizer is fed an Asimov dataset where the exact data explicitly matches the expected model. This verifies that the underlying likelihood geometry is constructed properly, as the minimizer must converge exactly on the known true parameters.
+The test suite currently comprises 75 tests across 17 files under `tests/` (72 always run, plus 3 UltraNest-specific tests that skip automatically if the optional `ultranest` package isn't installed), grouped into four categories:
+* **Core statistical correctness** (30 tests, 5 files): the smoothed unphysical-rate NLL penalty and its boundary-discontinuity handling, the finite-MC likelihood formula checked against hand-computed references, N-dimensional and non-contiguous binned data, disconnected 1D accepted-interval reporting, and unbinned `pdf_components` correctness (2- and 3+-component models).
+* **Optimizer robustness** (25 tests, 5 files): optimizer restarts and neighbor warm-starting, `bounds_func`/`constraints` support (SciPy and UltraNest `LinearConstraint`/`NonlinearConstraint`), SciPy boundary clamping, and Asimov-dataset convergence (the minimizer must recover the known true parameters exactly).
+* **Algorithmic features** (12 tests, 2 files): `sparsify_grid`'s boundary-refinement guard, and the validated `adaptive_toys`/`toy_batch_size` early-stopping behavior.
+* **Infrastructure** (8 tests, 5 files): core imports and optional-dependency detection, I/O and checkpointing integrity, multiprocessing serialization via `ProcessPoolExecutor`, Numba JIT compilation hooks, and UltraNest's internal-bug retry wrapper.
+
+(Counts and groupings reflect the test suite at the time of writing; run `pytest tests/ --collect-only -q` for the current, authoritative total.)
 
 ### Developer Installation
 If you plan to modify the codebase or contribute to the project, you should install the package with its optional testing and development dependencies included. This ensures you have tools like `pytest` ready to go without cluttering the requirements for standard users:
