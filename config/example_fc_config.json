@@ -4,19 +4,20 @@
         0.68,
         0.9
     ],
-    "n_toys": 200,
+    "n_toys": 500,
     "strategy": "scipy",
+    "scipy_method": null,
     "num_cores": 8,
     "verbose": 1,
     "adaptive_toys": true,
     "toy_batch_size": 200,
-    "sparsify_grid": true,
+    "sparsify_grid": false,
     "n_restarts": 1,
     "neighbor_seeding": true,
     "warm_start": true,
     "output_file": "fc_results",
     "save_log": true,
-    "save_directory": "../output/example_fc_output",
+    "save_directory": "output/example_fc_output",
     "use_finite_mc_correction_binned": true,
     "compute_1D_intervals": true,
     "compute_2D_intervals": true,
@@ -25,6 +26,6 @@
         "param2",
         "param3"
     ],
-    "smooth_1d": false,
-    "smooth_2d": false
+    "smooth_1d": true,
+    "smooth_2d": true
 }
