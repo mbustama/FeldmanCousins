@@ -62,9 +62,13 @@ Configuration Parameters
      - ``True``, ``False``
      - ``True``
    * - ``adaptive_toys``
-     - Dynamically stops toy generation early if a grid point is definitively excluded.
+     - Dynamically stops toy generation early once a grid point's accept/reject verdict is statistically settled (99.9% confidence, never before 100 toys). Only for ``strategy`` in ``"scipy"``/``"ultranest"``/``"hybrid"``; no effect for ``"grid"``.
      - ``True``, ``False``
      - ``True``
+   * - ``toy_batch_size``
+     - Chunk size for submitting/collecting toys from the executor (bounds peak memory for ``likelihood_type="unbinned"``; also the granularity of ``adaptive_toys``' stopping checks). Same total ``n_toys`` either way. Only for ``strategy`` in ``"scipy"``/``"ultranest"``/``"hybrid"``; no effect for ``"grid"``.
+     - Integer :math:`> 0`
+     - ``200``
    * - ``sparsify_grid``
      - Traces contour perimeters in 2D space to skip resolving deep interior/exterior nodes.
      - ``True``, ``False``

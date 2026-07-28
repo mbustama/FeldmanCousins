@@ -355,8 +355,31 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
         to cap this, e.g. to match a Slurm/PBS core allocation.
     verbose : int, optional
         0 = Silent, 1 = Normal, 2 = Debug.
-    adaptive_toys, toy_batch_size, warm_start : bool/int
-        Algorithmic enhancements to reduce execution time.
+    adaptive_toys : bool, optional
+        When True and strategy in ("scipy", "ultranest", "hybrid"), stops
+        generating toys for a grid point early once its accept/reject
+        verdict is statistically settled (a strict 99.9% Wilson confidence
+        interval on the running p-value estimate lies entirely on one side
+        of the target significance, and at least `toys.ADAPTIVE_MIN_TOYS`
+        toys have been generated) -- see `toys._adaptive_stop_decision`.
+        This only meaningfully saves time for points far from the accept/
+        reject boundary; points near it will and should run the full
+        `n_toys`. No effect for strategy="grid" (its toy generators are a
+        `numba` `prange`-parallelized batch operation, not a natural fit
+        for a sequential early-exit check).
+    toy_batch_size : int, optional
+        For strategy in ("scipy", "ultranest", "hybrid"), toys are
+        submitted/collected from the executor in batches of this size
+        instead of all `n_toys` at once, bounding how many toy datasets /
+        in-flight results are alive at once (matters most for
+        `likelihood_type="unbinned"`; binned toys are small fixed-size
+        per-bin arrays with no comparable memory concern). Also the
+        granularity at which `adaptive_toys` checks its stopping
+        condition. Same total `n_toys` are generated either way when
+        `adaptive_toys=False` -- this only changes memory/dispatch
+        pattern, never the statistics. No effect for strategy="grid".
+    warm_start : bool
+        Algorithmic enhancement to reduce execution time via checkpointing.
     sparsify_grid : bool, optional
         For 2D scans, coarsely samples the grid and interpolates the
         t_critical surface, then refines only cells adjacent to the
@@ -486,12 +509,22 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
         if save_log: run_logger.info(msg)
 
     # Coerce input configurations
-    if isinstance(cl, (float, int)): 
+    if isinstance(cl, (float, int)):
         cl = [float(cl)]
-    if ULTRANEST_AVAILABLE and verbose < 2: 
+    if ULTRANEST_AVAILABLE and verbose < 2:
         logging.getLogger("ultranest").setLevel(logging.WARNING)
-    if NUMBA_AVAILABLE and num_cores is not None: 
+    if NUMBA_AVAILABLE and num_cores is not None:
         set_num_threads(num_cores)
+
+    # Target significance for adaptive_toys' early-stopping decision: the
+    # *smallest* alpha (largest requested CL) is the hardest accept/reject
+    # verdict to settle, so requiring it to be settled before stopping
+    # guarantees every other requested CL's verdict is settled too (they
+    # all come from the same toy sample). Only used when adaptive_toys=True
+    # and only affects strategy in ("scipy", "ultranest", "hybrid") --
+    # strategy="grid"'s toy generators are unaffected (see their own
+    # docstrings for why).
+    adaptive_alpha = 1.0 - max(cl)
         
     # Setup likelihood variances for Finite MC
     if likelihood_type == "binned":
@@ -664,11 +697,16 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
                     else:
                         t_stats = generate_and_fit_toys_grid_unbinned_1d(pt, p_idx, true_params, n_params, pdf_components, full_grid_points, cond_grid_points, n_toys, S_mc_pool, B_mc_pool, compute_rates_func, generate_toy_func)
                 else:
-                    t_stats = generate_and_fit_toys_python(true_params, n_params, "1d", p_idx, None, None, pt, None, bounds_list, n_toys, strategy, num_cores=num_cores, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_mc_pool=S_mc_pool, B_mc_pool=B_mc_pool, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, compute_rates_func=compute_rates_func, generate_toy_func=generate_toy_func, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
-                
+                    t_stats = generate_and_fit_toys_python(true_params, n_params, "1d", p_idx, None, None, pt, None, bounds_list, n_toys, strategy, num_cores=num_cores, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_mc_pool=S_mc_pool, B_mc_pool=B_mc_pool, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, compute_rates_func=compute_rates_func, generate_toy_func=generate_toy_func, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, toy_batch_size=toy_batch_size, adaptive_toys=adaptive_toys, t_data=t_data_arr[i], alpha=adaptive_alpha)
+
                 t_stats.sort()
-                for c in cl: 
-                    t_crit_dict[c][i] = t_stats[min(int(c * n_toys), n_toys - 1)]
+                # Quantile index uses len(t_stats), not n_toys: adaptive_toys
+                # may have stopped this point early with fewer toys than
+                # n_toys (strategy="grid" always returns exactly n_toys, so
+                # this is a no-op there).
+                n_generated = len(t_stats)
+                for c in cl:
+                    t_crit_dict[c][i] = t_stats[min(int(c * n_generated), n_generated - 1)]
                     
             results[f"1d_accepted_p{p_idx+1}"] = {c: t_data_arr <= t_crit_dict[c] for c in cl}
             
@@ -768,11 +806,14 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
                     else:
                         t_stats = generate_and_fit_toys_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, true_params, n_params, pdf_components, full_grid_points, cond_grid_points, n_toys, S_mc_pool, B_mc_pool, compute_rates_func, generate_toy_func)
                 else:
-                    t_stats = generate_and_fit_toys_python(true_params, n_params, "2d", None, fix_A, fix_B, p_A, p_B, bounds_list, n_toys, strategy, num_cores=num_cores, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_mc_pool=S_mc_pool, B_mc_pool=B_mc_pool, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, compute_rates_func=compute_rates_func, generate_toy_func=generate_toy_func, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method)
-                
+                    t_stats = generate_and_fit_toys_python(true_params, n_params, "2d", None, fix_A, fix_B, p_A, p_B, bounds_list, n_toys, strategy, num_cores=num_cores, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_mc_pool=S_mc_pool, B_mc_pool=B_mc_pool, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, compute_rates_func=compute_rates_func, generate_toy_func=generate_toy_func, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, toy_batch_size=toy_batch_size, adaptive_toys=adaptive_toys, t_data=results[f"2d_t_data_{pair_name}"][i, j], alpha=adaptive_alpha)
+
                 t_stats.sort()
-                for c in cl: 
-                    results[f"2d_t_critical_{pair_name}"][c][i, j] = t_stats[min(int(c * n_toys), n_toys - 1)]
+                # Quantile index uses len(t_stats), not n_toys -- see the 1D
+                # loop's identical comment above.
+                n_generated = len(t_stats)
+                for c in cl:
+                    results[f"2d_t_critical_{pair_name}"][c][i, j] = t_stats[min(int(c * n_generated), n_generated - 1)]
 
             # --- Sparsification Array Tracing ---
             # To dramatically reduce computation time in 2D grids, this algorithm:

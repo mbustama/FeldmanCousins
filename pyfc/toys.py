@@ -22,6 +22,7 @@ https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 Lice
 """
 
 import concurrent.futures
+import math
 import warnings
 
 import numpy as np
@@ -34,6 +35,85 @@ from .optimizers import (
     unconditional_fit_scipy,
     unconditional_fit_ultranest,
 )
+
+# --- Adaptive early-stopping for toy generation ---
+# Never consider stopping before this many toys have been generated at a
+# given grid point -- small-sample binomial confidence intervals are
+# unreliable, and the whole point of "definitively excluded" (README's own
+# framing) is to only stop where there's overwhelming evidence either way.
+ADAPTIVE_MIN_TOYS = 100
+
+# Two-sided 99.9% normal quantile (not 95%) for the Wilson score interval
+# below. The cost of a wrong early stop is a biased confidence interval, so
+# the stopping rule itself is biased hard towards caution: it only fires
+# when the accept/reject verdict is essentially certain not to flip with
+# more toys, not merely "likely."
+_ADAPTIVE_CI_Z = 3.290526731491989
+
+
+def _wilson_score_interval(n_above, n_total, z=_ADAPTIVE_CI_Z):
+    """
+    Wilson score confidence interval for a binomial proportion.
+
+    Parameters:
+    -----------
+    n_above : int
+        Number of "successes" -- here, toys with t_toy >= t_data.
+    n_total : int
+        Total number of toys generated so far.
+    z : float, optional
+        Two-sided normal quantile for the desired confidence level.
+
+    Returns:
+    --------
+    (lo, hi) : tuple of float
+        The confidence interval on the true proportion, clipped to [0, 1].
+    """
+    p_hat = n_above / n_total
+    z2 = z * z
+    denom = 1.0 + z2 / n_total
+    center = (p_hat + z2 / (2.0 * n_total)) / denom
+    margin = z * math.sqrt((p_hat * (1.0 - p_hat) + z2 / (4.0 * n_total)) / n_total) / denom
+    return max(0.0, center - margin), min(1.0, center + margin)
+
+
+def _adaptive_stop_decision(n_above, n_total, alpha, min_toys=ADAPTIVE_MIN_TOYS):
+    """
+    Decides whether a grid point's accept/reject verdict at significance
+    `alpha` is settled enough to stop generating more toys for it.
+
+    Statistical basis: `n_above / n_total` is the running estimate of the
+    p-value P(t_toy >= t_data). The point is accepted iff this p-value is
+    >= alpha (equivalently, t_data is at or below the (1-alpha) quantile of
+    the toy distribution -- see `compute_fc_intervals`'s own t_critical
+    computation). If a strict (99.9%) Wilson confidence interval on that
+    p-value estimate lies entirely on one side of `alpha`, the verdict
+    cannot plausibly flip with more toys.
+
+    Parameters:
+    -----------
+    n_above : int
+        Number of toys so far with t_toy >= t_data.
+    n_total : int
+        Total number of toys generated so far.
+    alpha : float
+        Target significance (1 - CL) for the accept/reject decision. When
+        multiple confidence levels are requested, callers should pass the
+        *smallest* alpha (largest CL) -- the hardest case to resolve --
+        so that stopping here also guarantees every less-stringent CL's
+        decision is settled.
+    min_toys : int, optional
+        Minimum toy count before early-stopping is even considered.
+
+    Returns:
+    --------
+    bool
+        True if it is safe to stop generating more toys for this point.
+    """
+    if n_total < min_toys:
+        return False
+    lo, hi = _wilson_score_interval(n_above, n_total)
+    return lo > alpha or hi < alpha
 
 
 def _worker_unbinned_toy(args):
@@ -99,7 +179,8 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
                                  likelihood_type="binned", S_mc_pool=None, B_mc_pool=None,
                                  S_sumw2=None, B_sumw2=None, use_finite_mc=False,
                                  compute_rates_func=None, generate_toy_func=None, bounds_func=None,
-                                 constraints=None, scipy_method=None):
+                                 constraints=None, scipy_method=None,
+                                 toy_batch_size=None, adaptive_toys=False, t_data=None, alpha=None):
     """
     Handles threaded generation and fitting of MC toys for 1D profiling and 2D contours.
     
@@ -167,20 +248,64 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
     scipy_method : str, optional
         Explicit `scipy.optimize.minimize` method override, forwarded to the
         scipy fit calls.
+    toy_batch_size : int, optional
+        Chunk size for dispatching toys to the executor: instead of
+        submitting all `n_toys` tasks in one `executor.map` call, they are
+        submitted/collected in batches of this size, bounding how many toy
+        datasets / in-flight result objects are alive at once (matters
+        most for `likelihood_type="unbinned"`, where each toy is a
+        variable-size event array passed through `ProcessPoolExecutor`
+        IPC; binned toys are small fixed-size per-bin arrays and don't
+        have this memory concern). None or <= 0 means "one batch of the
+        full `n_toys`" (previous behavior, unchanged numerics either way
+        -- this only affects how toys are grouped for dispatch/early-stop
+        checks, never how many are generated when `adaptive_toys=False`).
+    adaptive_toys : bool, optional
+        If True, stop generating toys for this point early once the
+        accept/reject verdict at `alpha` is statistically settled (see
+        `_adaptive_stop_decision`). Checked once per `toy_batch_size`
+        batch, so a smaller `toy_batch_size` allows finer-grained (but not
+        free -- still bounded by `ADAPTIVE_MIN_TOYS`) early stopping.
+        Requires `t_data` and `alpha` to be provided; silently has no
+        effect otherwise (falls back to always generating all `n_toys`).
+    t_data : float, optional
+        The observed data's test statistic at this grid point, required
+        for `adaptive_toys` to have any effect.
+    alpha : float, optional
+        Target significance (1 - CL) for the `adaptive_toys` stopping
+        decision. When multiple confidence levels are requested, callers
+        should pass the smallest alpha (largest CL) -- see
+        `_adaptive_stop_decision`'s docstring.
 
     Returns:
     --------
     t_stats : np.ndarray
-        Array of the computed test statistics for all `n_toys`.
+        Array of the computed test statistics -- length `n_toys`, unless
+        `adaptive_toys` stopped early, in which case it is shorter.
+        Callers must index/quantile using `len(t_stats)`, not the original
+        `n_toys`.
     """
+    batch_size = toy_batch_size if (toy_batch_size and toy_batch_size > 0) else n_toys
+    do_adaptive = adaptive_toys and t_data is not None and alpha is not None
+
     # --- Branch 1: Unbinned Data (Process-based parallelism) ---
     if likelihood_type == "unbinned":
-        args_list = [(t, true_params, n_params, fit_mode, fix_idx, fix_A, fix_B, t_vA, t_vB,
-                      pdf_components, bounds_list, S_mc_pool, B_mc_pool, strategy,
-                      compute_rates_func, generate_toy_func, bounds_func, constraints, scipy_method) for t in range(n_toys)]
         try:
+            t_stats = []
+            n_above = 0
             with concurrent.futures.ProcessPoolExecutor(max_workers=num_cores) as executor:
-                t_stats = list(executor.map(_worker_unbinned_toy, args_list))
+                for batch_start in range(0, n_toys, batch_size):
+                    batch_end = min(batch_start + batch_size, n_toys)
+                    args_batch = [(t, true_params, n_params, fit_mode, fix_idx, fix_A, fix_B, t_vA, t_vB,
+                                  pdf_components, bounds_list, S_mc_pool, B_mc_pool, strategy,
+                                  compute_rates_func, generate_toy_func, bounds_func, constraints, scipy_method)
+                                  for t in range(batch_start, batch_end)]
+                    batch_results = list(executor.map(_worker_unbinned_toy, args_batch))
+                    t_stats.extend(batch_results)
+                    if do_adaptive:
+                        n_above += sum(1 for v in batch_results if v >= t_data)
+                        if _adaptive_stop_decision(n_above, len(t_stats), alpha):
+                            break
             return np.array(t_stats)
         except Exception as e:
             warnings.warn(f"ProcessPoolExecutor failed. Falling back to ThreadPoolExecutor. Error: {e}")
@@ -217,7 +342,16 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
 
         return max(0.0, cond_nll - uncond_nll)
 
+    t_stats = []
+    n_above = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_cores) as executor:
-        t_stats = list(executor.map(fit_single_toy, range(n_toys)))
-        
+        for batch_start in range(0, n_toys, batch_size):
+            batch_end = min(batch_start + batch_size, n_toys)
+            batch_results = list(executor.map(fit_single_toy, range(batch_start, batch_end)))
+            t_stats.extend(batch_results)
+            if do_adaptive:
+                n_above += sum(1 for v in batch_results if v >= t_data)
+                if _adaptive_stop_decision(n_above, len(t_stats), alpha):
+                    break
+
     return np.array(t_stats)

@@ -354,8 +354,8 @@ Comprehensive documentation for PyFC is hosted on GitHub Pages. It includes a qu
 | `param_names` | Labels mapping the physical parameters for plotting outputs. Supports raw LaTeX (e.g., `[r"$\Phi$", r"$\gamma$"]`). | List of strings | `["param1", "param2", ...]` |
 | `smooth_1d` | If True, applies default Gaussian kernel smoothing to 1D limit profiles in plots. | `True`, `False` | `True` |
 | `smooth_2d` | If True, applies default interpolation smoothing to final 2D contour graphics. | `True`, `False` | `True` |
-| `adaptive_toys` | Dynamically stops toy generation early if a grid point is definitively excluded, saving compute time. | `True`, `False` | `True` |
-| `toy_batch_size` | Chunk size for batched array generation (optimizes memory/speed). | Integer `> 0` | `200` |
+| `adaptive_toys` | Dynamically stops toy generation early once a grid point's accept/reject verdict is statistically settled (strict 99.9% confidence, never before 100 toys), saving compute time. Only for `strategy` in `"scipy"`/`"ultranest"`/`"hybrid"`; no effect for `"grid"`. | `True`, `False` | `True` |
+| `toy_batch_size` | Chunk size for submitting/collecting toys from the executor (bounds peak memory for `likelihood_type="unbinned"`; also the granularity of `adaptive_toys`' stopping checks). Same total `n_toys` either way. Only for `strategy` in `"scipy"`/`"ultranest"`/`"hybrid"`; no effect for `"grid"`. | Integer `> 0` | `200` |
 | `sparsify_grid` | Traces contour perimeters in 2D space to skip resolving deep interior/exterior nodes. | `True`, `False` | `False` |
 | `save_log` | Pipes output directly to a persistent text log file. | `True`, `False` | `True` |
 | `save_directory` | Directory path where final results, plots, and checkpoints reside. | String (path) | `"output/example_fc_output"` |
@@ -407,6 +407,13 @@ Calculating $N_{\text{toys}}$ for every node in a $100 \times 100$ 2D grid is co
 5. Evaluates exact data fits and expensive MC toys on the specific high-resolution cells lying strictly on this perimeter to perfect the contour edge, drastically cutting runtime.
 
 **Known limitation:** this defaults to `False` because step 4/5's boundary refinement is currently a single, non-iterative pass with a 1-cell-wide halo around the sparse coarse nodes. For grids much larger than roughly 20x20 per axis (i.e. the exact regime this feature targets), that halo does not reach deep interior/exterior cells far from any coarse node -- those cells are never evaluated and are force-excluded from the accepted region regardless of their true status. Opt in with care and verify against a `sparsify_grid=False` reference run on a representative grid size before trusting the result.
+
+### Adaptive Toy Generation (`adaptive_toys`, `toy_batch_size`)
+For `strategy` in `"scipy"`, `"ultranest"`, or `"hybrid"` (no effect for `"grid"`), toys for a given grid point are generated in batches of `toy_batch_size` rather than all $N_{\text{toys}}$ at once. This bounds peak memory (mainly relevant for `likelihood_type="unbinned"`, where each toy is a variable-size event array held in a `ProcessPoolExecutor`) and gives `adaptive_toys` a checkpoint at which to decide whether more toys are needed.
+
+When `adaptive_toys=True`, after each batch PyFC computes the running fraction of toys with $t_{\text{toy}} \geq t_{\text{data}}$ -- an estimate of the p-value for that point's accept/reject decision -- and a strict (99.9% confidence) Wilson score interval around it. If that interval lies entirely on one side of the target significance $\alpha = 1 - \text{CL}$ (using the *largest* requested `cl`, the hardest verdict to settle, if several are given), the accept/reject verdict cannot plausibly flip with more toys, and generation stops early for that point. Early-stopping is never considered before 100 toys, regardless of how extreme the running estimate looks -- small-sample binomial confidence intervals are unreliable.
+
+This only meaningfully saves time for points *far* from the accept/reject boundary (deep inside or deep outside the confidence region); points near the boundary will and should run the full `n_toys`. Validated (see `tests/test_adaptive_toys.py`) to reach the same accept/reject verdicts as `adaptive_toys=False` on both isolated toy-generation calls and full `compute_fc_intervals` runs.
 
 ### Handling Joint/Simplex-Constrained Parameters
 
@@ -482,7 +489,7 @@ PyFC is explicitly engineered to scale across multi-core High-Performance Comput
     config['num_cores'] = int(os.environ.get('SLURM_CPUS_PER_TASK', 0))
     ```
 *   **DO utilize whole nodes.** Because the unbinned optimizer relies on multi-processing, it scales near-linearly. Requesting exclusive nodes (e.g., 64 or 128 cores) will drastically reduce Feldman-Cousins runtime.
-*   **DO monitor memory scaling for unbinned analyses.** Because `toy_batch_size` creates intermediate kinematic matrices inside the `ProcessPoolExecutor`, running $N_{\text{toys}} = 5000$ on 128 cores can cause memory exhaustion (OOM slurm kills) if your event arrays are massive. If this occurs, reduce `toy_batch_size` from 200 to 50.
+*   **DO monitor memory scaling for unbinned analyses.** Toys are submitted to the `ProcessPoolExecutor` in batches of `toy_batch_size` rather than all $N_{\text{toys}}$ at once, bounding how many toy event arrays / in-flight result objects are alive at any moment. Running $N_{\text{toys}} = 5000$ on 128 cores can still cause memory exhaustion (OOM slurm kills) if your event arrays are massive. If this occurs, reduce `toy_batch_size` from 200 to 50. (Only applies to `strategy` in `"scipy"`/`"ultranest"`/`"hybrid"` -- `strategy="grid"` doesn't batch, since its toy generators are a single vectorized `numba` call rather than a pool of per-toy tasks.)
 *   **DON'T enable `save_log` for massive array jobs.** If you are submitting hundreds of job arrays to an HPC, writing individual `.txt` logs continuously can bottleneck shared network file systems (NFS). Rely on the binary checkpointing instead.
 
 ### Advanced Integrations

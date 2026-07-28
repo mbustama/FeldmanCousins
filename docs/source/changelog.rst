@@ -324,6 +324,63 @@ Fixed
   "Beeston-Barlow technique" -- a different, *profiled* (not marginalized)
   likelihood that the paper itself distinguishes from ``L_Eff`` (and which
   this codebase does not implement).
+* **``adaptive_toys`` and ``toy_batch_size`` were documented, threaded
+  through ``config.py``/``generate_config.py``'s CLI/JSON/wizard
+  machinery, and part of ``compute_fc_intervals``'s own signature -- but
+  neither was ever read anywhere to make an actual decision.** README's
+  own OOM-troubleshooting advice ("reduce ``toy_batch_size`` from 200 to
+  50") would have had zero effect. Made both real, for ``strategy`` in
+  ``"scipy"``/``"ultranest"``/``"hybrid"``
+  (``toys.generate_and_fit_toys_python``); no effect for
+  ``strategy="grid"``, whose toy generators are a single vectorized
+  ``numba`` ``@njit(parallel=True)`` call per point rather than a pool of
+  per-toy tasks, not a natural fit for either batching or a sequential
+  early-exit check.
+
+  * ``toy_batch_size``: toys are now submitted/collected from the
+    ``ThreadPoolExecutor``/``ProcessPoolExecutor`` in batches of this
+    size instead of one ``executor.map`` call for all ``n_toys``,
+    bounding how many toy datasets / in-flight results are alive at once
+    (matters most for ``likelihood_type="unbinned"``, matching README's
+    OOM scenario). Same total ``n_toys`` are always generated -- purely a
+    dispatch/memory change, zero effect on results (proved directly: for
+    binned toys, the same seed produces bit-for-bit identical output
+    regardless of ``toy_batch_size``, since the underlying
+    ``np.random.poisson`` call that generates the toy data happens once
+    up front either way).
+  * ``adaptive_toys``: after each ``toy_batch_size`` batch, computes the
+    running fraction of toys with ``t_toy >= t_data`` (a p-value estimate
+    for that point's accept/reject decision) and a strict 99.9% Wilson
+    score confidence interval around it. If that interval lies entirely
+    on one side of the target significance ``alpha = 1 - CL`` (using the
+    *largest* requested ``cl`` when several are given, so stopping there
+    guarantees every less-stringent ``cl``'s decision is also settled),
+    the verdict cannot plausibly flip with more toys and generation stops
+    early for that point. Never considered before 100 toys
+    (``toys.ADAPTIVE_MIN_TOYS``), regardless of how extreme the running
+    estimate looks -- small-sample binomial confidence intervals are
+    unreliable. Meaningfully saves time only for points far from the
+    accept/reject boundary; points near it correctly run the full
+    ``n_toys``. ``compute_fc_intervals``'s own quantile-index computation
+    (``t_stats[int(cl * n_toys)]``) now uses the *actual* number of toys
+    generated for that point instead of the original ``n_toys``, since
+    ``adaptive_toys`` can make that shorter.
+  * **Validated, not just implemented** (per the risk this fix was
+    flagged with -- a wrong stopping rule would silently bias confidence
+    intervals, worse than the previous do-nothing state): new tests in
+    ``tests/test_adaptive_toys.py`` cover the Wilson-interval/stopping-
+    decision primitives directly, confirm well-inside/well-outside points
+    stop at exactly the minimum toy count while a point near the true
+    critical value runs the full ``n_toys``, and -- the real test of "did
+    this introduce bias" -- confirm ``adaptive_toys=True`` reaches the
+    *same* accept/reject verdict as ``adaptive_toys=False`` with the same
+    ``n_toys`` cap, both for isolated toy-generation calls across many
+    independent trials and for a full end-to-end
+    ``compute_fc_intervals`` run. README's ``adaptive_toys``/
+    ``toy_batch_size`` table rows, the OOM-troubleshooting paragraph, and
+    :doc:`configuration`'s table are updated to describe what actually
+    happens now, plus a new README "Adaptive Toy Generation" section
+    (mirroring the existing "Contour Edge Tracing" section's depth).
 
 Added
 ~~~~~
