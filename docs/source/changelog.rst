@@ -488,6 +488,125 @@ Fixed
   pattern used for ``warm_start``/``toy_batch_size``; the new wizard
   questions default to ``n_restarts=1``/``neighbor_seeding=True``,
   matching ``compute_fc_intervals``'s own defaults.
+* **``calc_nll``'s finite-MC (Poisson-Gamma) branch lost catastrophic
+  floating-point precision for well-simulated templates (large
+  ``alpha = mu^2/sigma^2 + 1``).** Evaluating
+  ``ln(Gamma(n+alpha)) - ln(Gamma(alpha))`` as a literal difference of two
+  ``lgamma`` calls loses precision once both terms are individually huge
+  (``~alpha*ln(alpha)``) while their true difference is only
+  ``O(n*ln(alpha))`` -- double precision's ~16 significant digits get
+  eaten by the leading digits both terms share. Verified against a
+  50-digit ``mpmath`` reference run through the actual compiled
+  ``calc_nll``: at ``mu=1000, sigma^2=1e-9`` (a realistic
+  well-simulated-template regime), the old formula was off by 7.5 in
+  absolute NLL, large enough to distort ``t = NLL_cond - NLL_uncond`` and
+  bias interval boundaries. Fixed via two algebraically exact (not
+  approximated) reformulations: the lgamma difference is now computed as
+  the exact integer-recurrence sum ``SUM_{k=0}^{n-1} ln(alpha + k)``, and
+  ``alpha*ln(beta) - (n+alpha)*ln(1+beta)`` is rewritten using ``log1p``
+  to avoid an analogous (smaller but real) cancellation. Re-verified
+  against the same 50-digit reference across 500 randomized
+  ``(mu, sigma2, n)`` trials spanning ordinary-to-extreme ``alpha``:
+  worst-case error now 2.6e-8, down from an unbounded-growing error
+  before. New regression test in ``tests/test_finite_mc_likelihood.py``
+  pins the exact bug-report case and asserts the naive formula is still
+  measurably wrong there. The ``sigma2 <= 1e-10`` Poisson fallback for
+  near-zero simulation variance is unaffected by this fix and was
+  confirmed to be a deliberate, mathematically-correct limit (NB
+  collapses onto Poisson as ``sigma^2 -> 0``), not a numerical
+  workaround -- documented as such in ``calc_nll``'s own docstring.
+* **``toys.generate_and_fit_toys_python`` crashed with
+  ``ValueError: range() arg 3 must not be zero`` when called with
+  ``n_toys=0`` and the default ``toy_batch_size=None``.**
+  ``compute_fc_intervals``'s own entry point is shielded (its
+  ``toy_batch_size`` default is ``200``, always positive), but this is
+  public API with no ``n_toys`` validation of its own. Fixed by flooring
+  the fallback batch size at 1 (``max(n_toys, 1)``), so ``n_toys=0`` now
+  correctly returns an empty result array instead of crashing. New
+  regression test in ``tests/test_adaptive_toys.py``.
+* **``constraints`` were silently unenforced whenever a 1D/2D scan fixed
+  every parameter, leaving zero free parameters to optimize over** (a
+  natural simplification of this codebase's own flavor-fraction
+  constraint example, down to exactly 2 parameters with no extra
+  nuisance parameters). All four ``conditional_fit_*_scipy``/
+  ``conditional_fit_*_ultranest`` functions have a
+  ``len(free_bounds) == 0`` early-return path that bypasses their normal
+  optimizer machinery entirely (scipy's ``_minimize_with_restarts``/
+  UltraNest's ``log_likelihood`` closure, which is where ``constraints``
+  is otherwise projected/checked) -- so a scan point that individually
+  violated a joint constraint silently returned an ordinary finite NLL
+  instead of being rejected like every other constraint-violating point.
+  Fixed by checking ``_constraints_satisfied`` directly against the
+  fully-assembled point in all four early-return branches, returning the
+  same ``1e10`` flat penalty already used elsewhere in this module for a
+  violated constraint. New regression tests in ``tests/test_constraints.py``
+  covering all four functions (the two UltraNest ones gated on
+  ``ultranest`` being installed).
+* **``orchestrator.py``'s own ``__main__`` demo block never forwarded
+  ``n_restarts``/``neighbor_seeding``** to either of its two
+  ``compute_fc_intervals(...)`` calls, even though ``config.py`` correctly
+  parses both from the CLI (added earlier in this release) -- the
+  residual gap in that change. ``python -m pyfc.orchestrator --n_restarts
+  5 --neighbor_seeding false`` parsed without error but silently had zero
+  effect end to end. Now both calls pass ``config.get("n_restarts", 1)``/
+  ``config.get("neighbor_seeding", True)``, matching every other config
+  key already forwarded there.
+* **``scipy_method`` (fully wired into ``config.py`` and both README's/
+  :doc:`configuration`'s parameter tables) had no ``generate_config.py``
+  wizard question and no key in ``config/example_fc_config.json``** --
+  the same bug class as the ``n_restarts``/``neighbor_seeding`` gap
+  above, just older (predates this release) and missed by earlier
+  sweeps. Added a wizard question (``"auto"`` sentinel mapping back to
+  ``None``, matching the ``num_cores`` ``0``-to-``None`` pattern already
+  used there) and the corresponding JSON key.
+* **NaN ``mu_i`` (binned) / ``p_events`` (unbinned) silently bypassed the
+  unphysical-region barrier** instead of triggering it:
+  ``mu_i <= mu_floor``/``p_events <= p_floor`` are both ``False`` for
+  NaN, so a NaN arising from a bug in the user's ``compute_rates_func``
+  (division by zero, sqrt/log of a negative number) fell through into
+  ``math.log(NaN)``/``np.log(NaN)``, silently producing a NaN NLL with
+  no warning and no gradient signal for the optimizer to recover from (a
+  quadratic barrier needs a finite distance-from-floor to mean anything;
+  NaN has none). Both now raise an explicit ``ValueError`` identifying
+  the likely cause.
+
+  .. warning::
+     ``calc_nll`` is ``@njit(fastmath=True)``, and numba's ``fastmath``
+     compiles under LLVM's "assume no NaN" flag, which makes
+     ``math.isnan(x)``, ``np.isnan(x)``, and even the ``x != x``
+     self-inequality trick all silently return ``False`` for a genuine
+     NaN under ``fastmath`` -- verified directly before landing this fix.
+     The actual check reinterprets the float64's raw bits as an int64 and
+     tests the IEEE-754 NaN bit pattern directly (exponent all 1s,
+     mantissa nonzero), since integer bitwise ops aren't affected by
+     ``fastmath``'s floating-point assumptions. ``calc_nll_unbinned`` is
+     plain Python/NumPy (not ``@njit``), so its fix uses ordinary
+     ``np.isnan`` with no such caveat.
+
+  New regression tests in ``tests/test_smoothing.py``, including one
+  that pins the fastmath/isnan interaction directly so a future
+  "simplification" back to a standard NaN check would be caught.
+* **Three inaccurate behavioral claims in the docs, found by
+  re-verifying every specific claim against the actual current code:**
+  (1) README's "press Enter on every question to reproduce
+  [``compute_fc_intervals``'s defaults] exactly" was false for
+  ``num_cores``/``output_file``/``param_names``, which the wizard
+  correctly maps to ``None``-sentinels while the adjacent example JSON
+  block shows illustrative literal values (``8``, ``"fc_results"``,
+  etc.) -- reworded to carve out this exception explicitly rather than
+  overclaim exactness, confirmed by actually running the wizard end to
+  end. (2) README's and :doc:`outputs`'s checkpoint-resume descriptions
+  claimed resuming happens "from the exact point of interruption"; the
+  real granularity (confirmed via ``_save_fc_archive``'s call sites) is
+  per-1D-parameter and per-2D-pair, matching what the index page and
+  ``examples/07_pyfc_checkpointing_tutorial.ipynb`` already said
+  correctly -- an internal inconsistency, not just loose phrasing.
+  (3) ``plotting.generate_corner_plot``'s docstring claimed it returns
+  ``None`` and closes the matplotlib figure to free memory; it actually
+  returns the live ``Figure`` and never closes it (an intentional prior
+  change that the docstring was never updated to match) -- corrected,
+  and covered by a new regression test in ``tests/test_plotting.py`` (a
+  previously fully untested function).
 
 Added
 ~~~~~
