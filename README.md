@@ -15,7 +15,7 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
 * **Exact coverage**: Empirically derives the Profile Likelihood Ratio (PLR) test statistic distribution via dynamically generated Monte Carlo pseudo-experiments (toys).
 * **Advanced optimizers**: Supports gradient-based L-BFGS-B (SciPy), nested sampling (UltraNest), and brute-force grid scanning.
 * **Massive parallelization**: GIL-bypassing via NumPy/Numba C-extensions for binned thread pooling, and `ProcessPoolExecutor` for unbinned continuous functions.
-* **Finite Monte Carlo corrections**: Implements the Beeston-Barlow technique, modeling templates as Poisson-Gamma mixtures to account for finite simulation statistics.
+* **Finite Monte Carlo corrections**: Implements Argüelles, Schneider & Yuan's marginalized Poisson-Gamma mixture likelihood (`L_Eff`, arXiv:1901.04645) to account for finite simulation statistics -- not the (different, profiled-nuisance-parameter) Barlow-Beeston likelihood, despite the similar "Poisson-Gamma" framing.
 * **Dynamic 2D sparsification**: Employs Bivariate Spline interpolation and edge-tracing algorithms to skip unnecessary toy generation inside or outside 2D contours, radically reducing computational overhead.
 * **State checkpointing**: "Warm start" capability saves binary state matrices periodically to prevent data loss on cluster preemptions.
 * **Interactive configuration**: Built-in CLI for generating serialized JSON experiment configurations.
@@ -514,11 +514,13 @@ For binned configurations, the likelihood is the product of independent Poisson 
 $$-\ln \mathcal{L}_{\text{Poisson}} = \sum_{i=1}^{N} \left( \mu_i(\boldsymbol{\theta}) - n_i \ln \mu_i(\boldsymbol{\theta}) \right)~,$$ 
 
 **Finite Monte Carlo Correction:**
-If `use_finite_mc_correction_binned` is True, the pure Poisson distribution is convoluted with a Gamma prior, shifting the likelihood to a Negative Binomial distribution:
+If `use_finite_mc_correction_binned` is True, the pure Poisson distribution is convoluted with a Gamma prior, shifting the likelihood to a Negative Binomial distribution. PyFC implements the marginalized effective likelihood $\mathcal{L}_{\text{Eff}}$ derived by Argüelles, Schneider & Yuan (2019) [arXiv:1901.04645] -- see "Methodology References" below -- with
 
-$$-\ln \mathcal{L}_{\text{FiniteMC}} = \sum_{i=1}^{N} \left( \frac{\mu_i^2}{\sigma_i^2} \ln \left( 1 + \frac{\sigma_i^2}{\mu_i} \right) - n_i \ln \left( \frac{\mu_i}{1 + \sigma_i^2 / \mu_i} \right) \right)~,$$
+$$\alpha_i = \frac{\mu_i^2}{\sigma_i^2} + 1~, \qquad \beta_i = \frac{\mu_i}{\sigma_i^2}~,$$
 
-where $\sigma_i^2$ is the variance (sum of squared MC weights) in bin $i$.
+$$\ln \mathcal{L}_{\text{FiniteMC}} = \sum_{i=1}^{N} \left[ \alpha_i \ln \beta_i + \ln \Gamma(n_i + \alpha_i) - (n_i + \alpha_i) \ln(1 + \beta_i) - \ln \Gamma(\alpha_i) \right]~, \qquad -2\ln \mathcal{L}_{\text{FiniteMC}} = \text{NLL}_{\text{FiniteMC}}~,$$
+
+where $\sigma_i^2$ is the variance (sum of squared MC weights) in bin $i$. The "+1" in $\alpha_i$ is not a typo -- it is what distinguishes this (recommended, best-coverage) parameterization from the paper's alternative moment-matching-only choice ($\alpha_i = \mu_i^2/\sigma_i^2$, no "+1"), which the paper's own coverage tests show performs worse. The data-only constant $\ln(n_i!)$ term is dropped, matching the same convention used for the EUML formula below.
 
 ### Extended Unbinned Maximum Likelihood
 When binning causes unacceptable information loss (e.g., highly complex kinematics with low event counts), PyFC evaluates the unbinned likelihood. Instead of bin counts, it uses the exact coordinates $x_j$ of the $M$ observed events.

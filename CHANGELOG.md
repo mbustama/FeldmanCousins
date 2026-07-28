@@ -250,6 +250,32 @@ data.
   `test_unbinned_calc_nll_identical_for_physical_events`, are unaffected).
   New fine-resolution monotonicity-sweep tests in `tests/test_smoothing.py`
   covering the exact old discontinuity point.
+- **README.md's and `docs/source/methodology.rst`'s displayed finite-MC
+  correction formula did not match `calc_nll`'s actual implementation at
+  all** (not just a missing citation): the docs' formula had no `lgamma`/
+  `Gamma` terms whatsoever, while the code implements an exact Negative
+  Binomial log-likelihood built from `lgamma`. Numerically evaluating both
+  at the same `(mu, sigma2, n)` gives substantially different values --
+  the docs' formula was simply wrong, not an approximation of the code.
+  Checked the code's `alpha = mu^2/sigma^2 + 1` (previously flagged as
+  possibly a bug, since a naive mean-and-variance-matching derivation
+  gives `alpha = mu^2/sigma^2` with no `+1`) against Argüelles, Schneider
+  & Yuan, "A binned likelihood for stochastic models", JHEP 06 (2019) 030
+  [arXiv:1901.04645]: `calc_nll`'s formula is *exactly* the paper's `L_Eff`
+  (Eq. 3.16, their main, recommended result) -- the `+1` is a deliberate,
+  load-bearing part of that specific (best-coverage) parameterization, not
+  a bug, and no code change was needed. New hand-computed-reference tests
+  in `tests/test_finite_mc_likelihood.py` verify `calc_nll`'s finite-MC
+  branch against the paper's Eq. 3.16 directly. Added an explicit
+  citation and provenance note to `calc_nll`'s docstring (this paper was
+  already cited
+  in `docs/source/methodology.rst`/`docs/source/refs.bib` and README.md's
+  own "Methodology References" section, just not from the code itself),
+  and corrected both docs' displayed formula to match the paper/code
+  exactly. Also corrected README.md's feature-list description, which
+  called this the "Beeston-Barlow technique" -- a different, *profiled*
+  (not marginalized) likelihood that the paper itself distinguishes from
+  `L_Eff` (and which this codebase does not implement).
 
 ### Added
 

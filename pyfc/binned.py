@@ -64,6 +64,22 @@ def calc_nll(params, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
        ln(L) = alpha*ln(beta) + ln(Gamma(n+alpha)) - (n+alpha)*ln(1+beta) - ln(Gamma(alpha))
        NLL = -2 * ln(L)
 
+       This is exactly L_Eff, Eq. (3.16) of Arguelles, Schneider & Yuan,
+       "A binned likelihood for stochastic models", JHEP 06 (2019) 030
+       [arXiv:1901.04645] (their main, recommended result; see also
+       docs/source/refs.bib's `Arguelles2019izp` entry and
+       docs/source/methodology.rst). alpha/beta here are their Eq. (3.12)
+       with the uniform-prior choice a=1, b=0 in their Eq. (3.17) -- the
+       "+1" in alpha is a deliberate, load-bearing part of that choice, not
+       a typo: it is what distinguishes L_Eff from the paper's alternative
+       L_Mean parameterization (a=b=0, alpha = mu^2/sigma^2 with no "+1"),
+       which matches mean-and-variance moment-matching but has worse
+       coverage properties in the paper's own toy-experiment tests (their
+       Sec. 4.2, Fig. 5). The paper's own ln(k!) term is omitted here, as
+       it is a data-only constant that cancels in any NLL difference
+       (the same convention documented in `unbinned.calc_nll_unbinned`'s
+       own dropped ln(N_obs!) term).
+
     Parameters:
     -----------
     params : array_like, 1D

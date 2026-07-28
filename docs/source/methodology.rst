@@ -101,11 +101,24 @@ PyFC evaluates the Negative Log-Likelihood (NLL) for binned configurations:
    -\ln \mathcal{L}_{\text{Poisson}} = \sum_{i=1}^{N} \left( \mu_i(\boldsymbol{\theta}) - n_i \ln \mu_i(\boldsymbol{\theta}) \right)~,
 
 **Finite Monte Carlo Correction:**
-If enabled, this accounts for limited simulation statistics:
+If enabled, this accounts for limited simulation statistics using the marginalized
+effective likelihood :math:`\mathcal{L}_{\text{Eff}}` derived by Argüelles, Schneider
+& Yuan :cite:p:`Arguelles2019izp`, with
 
 .. math::
 
-   -\ln \mathcal{L}_{\text{FiniteMC}} = \sum_{i=1}^{N} \left( \frac{\mu_i^2}{\sigma_i^2} \ln \left( 1 + \frac{\sigma_i^2}{\mu_i} \right) - n_i \ln \left( \frac{\mu_i}{1 + \sigma_i^2 / \mu_i} \right) \right)~,
+   \alpha_i = \frac{\mu_i^2}{\sigma_i^2} + 1~, \qquad \beta_i = \frac{\mu_i}{\sigma_i^2}~,
+
+.. math::
+
+   \ln \mathcal{L}_{\text{FiniteMC}} = \sum_{i=1}^{N} \left[ \alpha_i \ln \beta_i + \ln \Gamma(n_i + \alpha_i) - (n_i + \alpha_i) \ln(1 + \beta_i) - \ln \Gamma(\alpha_i) \right]~,
+
+with :math:`\text{NLL}_{\text{FiniteMC}} = -2 \ln \mathcal{L}_{\text{FiniteMC}}`. The
+"+1" in :math:`\alpha_i` is deliberate: it is what distinguishes this (recommended,
+best-coverage) parameterization from the paper's alternative moment-matching-only
+choice (:math:`\alpha_i = \mu_i^2/\sigma_i^2`, no "+1"), which the paper's own
+coverage tests show performs worse. The data-only constant :math:`\ln(n_i!)` term
+is dropped, matching the same convention used for the EUML formula below.
 
 **Extended Unbinned Maximum Likelihood**
 For unbinned data, PyFC uses exact coordinates :math:`x_j` of the :math:`M` observed events:
