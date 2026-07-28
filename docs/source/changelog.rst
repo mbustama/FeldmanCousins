@@ -194,6 +194,26 @@ Changed
      updated to match; past changelog entries below that predate this
      rename still use the old names, as a historical record of what was
      true when they were written.
+* **README.md's "Salient Features" list, and its (previously absent)
+  counterpart on the Sphinx docs homepage, audited for accuracy against
+  the current codebase and augmented.** Fixes: "Advanced optimizers" now
+  names the ``"hybrid"`` strategy explicitly (it was already documented
+  elsewhere and used throughout the example notebooks, just missing from
+  this list and from both files' shared intro paragraph, which said only
+  "SciPy, UltraNest, Grid"); "Dynamic 2D sparsification" no longer claims
+  an unqualified "radically reducing computational overhead" now that
+  ``sparsify_grid`` is known to default to ``False`` and not scale
+  reliably past ~20x20 grid nodes per axis (both established earlier in
+  this release). Additions: "Unified binned and unbinned analysis" now
+  mentions N-dimensional/non-contiguous binned data support; "Exact
+  coverage" now mentions disconnected-interval reporting; a new "Joint/
+  simplex-constrained parameters" bullet covers ``bounds_func``/
+  ``constraints``, previously undocumented at this level despite having
+  its own dedicated tutorial notebook; "Massive parallelization" now
+  mentions the validated ``adaptive_toys``/``toy_batch_size`` behavior
+  from this same release. :doc:`index` gained its own "Salient Features"
+  section mirroring README.md's (it previously had none), plus an
+  "Important Links" pointer to :doc:`tutorials`.
 
 Fixed
 ~~~~~
