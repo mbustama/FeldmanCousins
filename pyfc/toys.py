@@ -285,7 +285,11 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
         Callers must index/quantile using `len(t_stats)`, not the original
         `n_toys`.
     """
-    batch_size = toy_batch_size if (toy_batch_size and toy_batch_size > 0) else n_toys
+    # max(n_toys, 1) guards against batch_size landing on 0 when n_toys=0
+    # and toy_batch_size is unset -- range(0, 0, 0) raises ValueError, while
+    # range(0, 0, 1) correctly yields zero iterations (n_toys=0 -> no toys
+    # generated, an empty t_stats array, not a crash).
+    batch_size = toy_batch_size if (toy_batch_size and toy_batch_size > 0) else max(n_toys, 1)
     do_adaptive = adaptive_toys and t_data is not None and alpha is not None
 
     # --- Branch 1: Unbinned Data (Process-based parallelism) ---

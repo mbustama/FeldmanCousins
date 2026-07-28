@@ -102,6 +102,29 @@ def test_toy_batch_size_alone_does_not_change_results():
     np.testing.assert_array_equal(t_unbatched, t_batched)
 
 
+def test_n_toys_zero_returns_empty_array_instead_of_crashing():
+    """
+    Regression test: n_toys=0 with the default toy_batch_size=None used to
+    raise `ValueError: range() arg 3 must not be zero`, since batch_size
+    fell back to n_toys itself (0) with nothing to floor it at 1. The
+    normal compute_fc_intervals entry point is shielded (its own
+    toy_batch_size default is 200, always > 0), but generate_and_fit_toys_python
+    is public API with no n_toys validation of its own, and n_toys=0 is a
+    plausible direct call (e.g. a caller building up toys incrementally).
+    """
+    true_params = np.array([10.0])
+    bounds_list = [(0.1, 30.0)]
+
+    t_stats = generate_and_fit_toys_python(
+        true_params, 1, "1d", 0, None, None, 10.0, None, bounds_list, 0, "scipy",
+        num_cores=1, verbose=0, likelihood_type="binned",
+        S_sumw2=np.zeros(1), B_sumw2=np.zeros(1), use_finite_mc=False,
+        compute_rates_func=_single_bin_rate_func, toy_batch_size=None, adaptive_toys=False,
+    )
+
+    assert len(t_stats) == 0
+
+
 # --- adaptive_toys: early-stopping behavior and verdict correctness ---
 
 def test_adaptive_toys_stops_early_for_extreme_points():
