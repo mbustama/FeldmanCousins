@@ -27,16 +27,17 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
 2. [File Tree](#file-tree)
 3. [Configuration & generate_config.py](#configuration--generate_configpy)
 4. [Quick Start Guide](#quick-start-guide)
-5. [Documentation](#documentation)
-6. [Configuration Parameters (CLI / JSON)](#configuration-parameters-cli--json)
-7. [Execution Strategies & Algorithmic Optimizations](#execution-strategies--algorithmic-optimizations)
-8. [HPC & Parallelization Guidelines](#hpc--parallelization-guidelines)
-9. [Statistical Methodology & Mathematics](#statistical-methodology--mathematics)
-10. [Outputs, Plots, and Checkpointing](#outputs-plots-and-checkpointing)
-11. [Common Recipes and Questions](#common-recipes-and-questions)
-12. [Contributing](#contributing)
-13. [License](#license)
-14. [How to Cite](#how-to-cite)
+5. [Tutorial Notebooks](#tutorial-notebooks)
+6. [Documentation](#documentation)
+7. [Configuration Parameters (CLI / JSON)](#configuration-parameters-cli--json)
+8. [Execution Strategies & Algorithmic Optimizations](#execution-strategies--algorithmic-optimizations)
+9. [HPC & Parallelization Guidelines](#hpc--parallelization-guidelines)
+10. [Statistical Methodology & Mathematics](#statistical-methodology--mathematics)
+11. [Outputs, Plots, and Checkpointing](#outputs-plots-and-checkpointing)
+12. [Common Recipes and Questions](#common-recipes-and-questions)
+13. [Contributing](#contributing)
+14. [License](#license)
+15. [How to Cite](#how-to-cite)
 
 ---
 
@@ -125,6 +126,7 @@ FeldmanCousins/
 │   └── example_fc_config.json       # Template configuration file for CLI usage
 ├── docs/                            # Sphinx documentation configuration and source
 │   ├── dev/                         # Handoff/planning notes from past refactors (not part of the built docs)
+│   │   ├── FIXES_BRIEF_dev-no-templates.md
 │   │   ├── FOLLOWUP_BRIEF_dev-no-templates.md
 │   │   └── REFACTOR_BRIEF_dev-no-templates.md
 │   ├── source/
@@ -141,16 +143,17 @@ FeldmanCousins/
 │   │   ├── pyfc.rst                 # Package-level API structure
 │   │   ├── quickstart.rst           # Code tutorials for setting up binned and unbinned models
 │   │   ├── references.rst           # Bibliography page rendering
-│   │   └── refs.bib                 # BibTeX citations for physics and statistics literature
+│   │   ├── refs.bib                 # BibTeX citations for physics and statistics literature
+│   │   └── tutorials.rst            # Guide to the numbered example notebooks in examples/
 │   ├── Makefile                     # Build commands for Unix
 │   └── make.bat                     # Build commands for Windows
-├── examples/
-│   ├── pyfc_algorithmic_features_tutorial.ipynb  # sparsify_grid / smooth_1d,2d / finite-MC correction, on vs. off
-│   ├── pyfc_high_dimensional_tutorial.ipynb      # Scaling to many parameters (5- and 10-parameter models)
-│   ├── pyfc_joint_constraints_tutorial.ipynb     # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
-│   ├── pyfc_non_contiguous_data_tutorial.ipynb   # Passing non-contiguous (transposed) N-D data arrays directly
-│   ├── pyfc_quickstart_tutorial.ipynb            # Runnable counterpart to the Quick Start Guide (binned + unbinned)
-│   └── pyfc_strategy_comparison_tutorial.ipynb   # grid/scipy/hybrid strategy comparison + custom plotting from disk
+├── examples/                         # Numbered in suggested reading order -- see "Tutorial Notebooks" below
+│   ├── 01_pyfc_quickstart_tutorial.ipynb            # Runnable counterpart to the Quick Start Guide (binned + unbinned)
+│   ├── 02_pyfc_high_dimensional_tutorial.ipynb      # Scaling to many parameters (5- and 10-parameter models)
+│   ├── 03_pyfc_non_contiguous_data_tutorial.ipynb   # Passing non-contiguous (transposed) N-D data arrays directly
+│   ├── 04_pyfc_algorithmic_features_tutorial.ipynb  # sparsify_grid / smooth_1d,2d / finite-MC correction, on vs. off
+│   ├── 05_pyfc_strategy_comparison_tutorial.ipynb   # grid/scipy/hybrid strategy comparison + custom plotting from disk
+│   └── 06_pyfc_joint_constraints_tutorial.ipynb     # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
 ├── pyfc/                            # Main Python package
 │   ├── __init__.py                  # Package initialization and metadata
 │   ├── binned.py                    # Binned NLL math and Numba-accelerated optimizers
@@ -202,9 +205,7 @@ Once PyFC is installed via `pip`, the package modules become available globally 
 python -m pyfc.generate_config
 ```
 
-The script will prompt you with questions regarding your likelihood type, number of toys, parallelization preferences, and smoothing options. It validates your inputs and writes a file (by default, `fc_config.json`) to your current working directory.
-
-*(Note: The interactive CLI prioritizes execution speed and may present slightly different default choices—such as enabling grid sparsification by default—compared to the base framework's hardcoded defaults).*
+The script will prompt you with questions regarding your likelihood type, number of toys, parallelization preferences, and smoothing options. It validates your inputs and writes a file (by default, `fc_config.json`) to your current working directory. Its default choices for each question match `compute_fc_intervals`'s own documented defaults (below) -- press Enter on every question to reproduce them exactly.
 
 **Example `fc_config.json` Default Values:**
 *(Note: If you omit passing a configuration dictionary to the orchestrator, the framework relies on these embedded fallback defaults).*
@@ -239,7 +240,7 @@ The script will prompt you with questions regarding your likelihood type, number
 
 Because PyFC evaluates abstract $N$-dimensional grids, you **must** supply Python functions instructing the framework how to mathematically map a coordinate in parameter space to your physical expectations. 
 
-*(See the `examples/pyfc_quickstart_tutorial.ipynb` notebook in the repository for a full, runnable end-to-end walkthrough of both models below.)*
+*(See the `examples/01_pyfc_quickstart_tutorial.ipynb` notebook in the repository for a full, runnable end-to-end walkthrough of both models below -- or the "Tutorial Notebooks" section below for the full set.)*
 
 ### 1. Binned Models
 For a binned analysis, fixed templates are ordinary NumPy arrays referenced via closure (module-global or nested-function capture) from your `compute_rates_func` -- they are no longer passed in as function arguments. You must write a `compute_rates_func` that combines them with your varied parameters to yield the total expected bin counts ($\mu$) and variances ($\sigma^2$). `data`/`mu`/`sigma2` may be **any shape**, not just 1D -- a genuine 2D `(E, cos_theta)` histogram is fully supported and evaluated directly.
@@ -325,6 +326,29 @@ results = compute_fc_intervals(
     **config 
 )
 ```
+
+---
+
+## Tutorial Notebooks
+
+The `examples/` directory contains six runnable Jupyter notebooks, numbered `01`-`06` in the
+order we'd suggest reading them. Each one is self-contained (states its own imports and mock
+data) and ends with a "Next steps" pointer to the notebooks that naturally follow it, so you
+can also jump straight to whichever topic matches your own project.
+
+| # | Notebook | What it covers | Read this if... |
+|---|---|---|---|
+| 01 | [`pyfc_quickstart_tutorial.ipynb`](examples/01_pyfc_quickstart_tutorial.ipynb) | A full binned model and a full unbinned model, end to end, with real output. The runnable counterpart to the [Quick Start Guide](#quick-start-guide) below. | **Start here.** This is the on-ramp for a brand-new project -- copy whichever of the two models matches your data. |
+| 02 | [`pyfc_high_dimensional_tutorial.ipynb`](examples/02_pyfc_high_dimensional_tutorial.ipynb) | Scaling `compute_fc_intervals` to 5 and then 10 free parameters; why 1D scans stay cheap while 2D contours grow combinatorially ($\binom{n}{2}$ pairs). | Your model has more than 2-3 free parameters. |
+| 03 | [`pyfc_non_contiguous_data_tutorial.ipynb`](examples/03_pyfc_non_contiguous_data_tutorial.ipynb) | Passing arbitrarily-shaped, even non-contiguous (e.g. transposed), N-D binned `data` arrays straight into PyFC, with a proof of correctness. | Your histogram isn't a plain 1D array, or you build it with a different axis order than PyFC expects. |
+| 04 | [`pyfc_algorithmic_features_tutorial.ipynb`](examples/04_pyfc_algorithmic_features_tutorial.ipynb) | The `sparsify_grid`, `smooth_1d`/`smooth_2d`, and `use_finite_mc_correction_binned` knobs, each demonstrated on vs. off -- plus how disconnected accepted intervals get reported. | You need to speed up a 2D scan, polish a plot, or your MC templates have limited statistics. |
+| 05 | [`pyfc_strategy_comparison_tutorial.ipynb`](examples/05_pyfc_strategy_comparison_tutorial.ipynb) | Benchmarking `"grid"`/`"scipy"`/`"hybrid"`/`"ultranest"` on the same model, then building a fully custom Matplotlib figure directly from PyFC's saved `.json`/`.npz` output (no dependency on `generate_corner_plot`). | You're choosing an optimizer strategy, or you want a publication-quality figure beyond PyFC's built-in plot. |
+| 06 | [`pyfc_joint_constraints_tutorial.ipynb`](examples/06_pyfc_joint_constraints_tutorial.ipynb) | Reproducing and fixing the flat-gradient optimizer trap that comes from a joint (non-box) constraint like a simplex ($f_e + f_\mu \leq 1$), using `bounds_func` and `constraints`. | Two or more of your parameters are linked by an inequality that a per-parameter `[lo, hi]` box can't express. |
+
+`01`-`03` build on each other and are worth reading in order for a first project; `04`-`06`
+are independent, narrower deep-dives you can read in any order once you need that specific
+capability. See also `docs/source/tutorials.rst` (rendered as part of the [hosted
+documentation](https://mbustama.github.io/FeldmanCousins/)) for the same guide.
 
 ---
 
@@ -555,7 +579,7 @@ Upon successful completion, the pipeline outputs final structures directly to yo
   ```json
   "interval_bounds": [[0.5, 0.9], [1.3, 1.6]]
   ```
-  and the common single-interval case is still a one-element list, `[[0.5, 0.9]]`, for a consistent schema regardless of how many disjoint pieces the accepted region has. See `pyfc_algorithmic_features_tutorial.ipynb`'s "Disconnected accepted intervals" section for a concrete worked example. (2D `interval_bounds` are not precomputed -- `2d_intervals` stores the full accepted boolean grid instead, from which any 2D region shape, connected or not, can already be reconstructed directly.)
+  and the common single-interval case is still a one-element list, `[[0.5, 0.9]]`, for a consistent schema regardless of how many disjoint pieces the accepted region has. See `04_pyfc_algorithmic_features_tutorial.ipynb`'s "Disconnected accepted intervals" section for a concrete worked example. (2D `interval_bounds` are not precomputed -- `2d_intervals` stores the full accepted boolean grid instead, from which any 2D region shape, connected or not, can already be reconstructed directly.)
 * **`fc_results.npz`**: A highly compressed NumPy archive containing exact parameter matrices and boolean masks. The keys are built dynamically based on the integer index of the parameter arrays:
 
 **Available `.npz` Keys (Where `{i}` and `{j}` correspond to 1-based grid array indices like 1, 2, 3):**

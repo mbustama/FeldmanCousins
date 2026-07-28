@@ -30,6 +30,7 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
 
    installation
    quickstart
+   tutorials
    configuration
    methodology
    outputs

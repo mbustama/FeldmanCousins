@@ -75,6 +75,7 @@ The project structure is organized modularly to separate analytical likelihood m
    │   └── example_fc_config.json       # Template configuration file for CLI usage
    ├── docs/                            # Sphinx documentation configuration and source
    │   ├── dev/                         # Handoff/planning notes from past refactors (not part of the built docs)
+   │   │   ├── FIXES_BRIEF_dev-no-templates.md
    │   │   ├── FOLLOWUP_BRIEF_dev-no-templates.md
    │   │   └── REFACTOR_BRIEF_dev-no-templates.md
    │   ├── source/
@@ -91,16 +92,17 @@ The project structure is organized modularly to separate analytical likelihood m
    │   │   ├── pyfc.rst                 # Package-level API structure
    │   │   ├── quickstart.rst           # Code tutorials for setting up binned and unbinned models
    │   │   ├── references.rst           # Bibliography page rendering
-   │   │   └── refs.bib                 # BibTeX citations for physics and statistics literature
+   │   │   ├── refs.bib                 # BibTeX citations for physics and statistics literature
+   │   │   └── tutorials.rst            # Guide to the numbered example notebooks in examples/
    │   ├── Makefile                     # Build commands for Unix
    │   └── make.bat                     # Build commands for Windows
-   ├── examples/
-   │   ├── pyfc_algorithmic_features_tutorial.ipynb  # sparsify_grid / smooth_1d,2d / finite-MC correction, on vs. off
-   │   ├── pyfc_high_dimensional_tutorial.ipynb      # Scaling to many parameters (5- and 10-parameter models)
-   │   ├── pyfc_joint_constraints_tutorial.ipynb     # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
-   │   ├── pyfc_non_contiguous_data_tutorial.ipynb   # Passing non-contiguous (transposed) N-D data arrays directly
-   │   ├── pyfc_quickstart_tutorial.ipynb            # Runnable counterpart to the Quick Start Guide (binned + unbinned)
-   │   └── pyfc_strategy_comparison_tutorial.ipynb   # grid/scipy/hybrid strategy comparison + custom plotting from disk
+   ├── examples/                         # Numbered in suggested reading order -- see the Tutorials page
+   │   ├── 01_pyfc_quickstart_tutorial.ipynb            # Runnable counterpart to the Quick Start Guide (binned + unbinned)
+   │   ├── 02_pyfc_high_dimensional_tutorial.ipynb      # Scaling to many parameters (5- and 10-parameter models)
+   │   ├── 03_pyfc_non_contiguous_data_tutorial.ipynb   # Passing non-contiguous (transposed) N-D data arrays directly
+   │   ├── 04_pyfc_algorithmic_features_tutorial.ipynb  # sparsify_grid / smooth_1d,2d / finite-MC correction, on vs. off
+   │   ├── 05_pyfc_strategy_comparison_tutorial.ipynb   # grid/scipy/hybrid strategy comparison + custom plotting from disk
+   │   └── 06_pyfc_joint_constraints_tutorial.ipynb     # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
    ├── pyfc/                            # Main Python package
    │   ├── __init__.py                  # Package initialization and metadata
    │   ├── binned.py                    # Binned NLL math and Numba-accelerated optimizers

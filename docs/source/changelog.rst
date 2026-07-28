@@ -169,6 +169,31 @@ Changed
      this). For all physical inputs (``mu_i > 0`` / all ``p_events[k] > 0``),
      output is practically identical to before (matches to within 1e-12
      relative/absolute tolerance; see ``tests/test_smoothing.py``).
+* **Example notebooks renamed with a ``01``-``06`` numeric prefix
+  reflecting suggested reading order**, and a new "Tutorial Notebooks"
+  section added to README.md (plus a mirroring :doc:`tutorials`, linked
+  from the Sphinx toctree) describing what each one covers and when to
+  reach for it. Old name -> new name: ``pyfc_quickstart_tutorial.ipynb``
+  -> ``01_pyfc_quickstart_tutorial.ipynb``,
+  ``pyfc_high_dimensional_tutorial.ipynb`` ->
+  ``02_pyfc_high_dimensional_tutorial.ipynb``,
+  ``pyfc_non_contiguous_data_tutorial.ipynb`` ->
+  ``03_pyfc_non_contiguous_data_tutorial.ipynb``,
+  ``pyfc_algorithmic_features_tutorial.ipynb`` ->
+  ``04_pyfc_algorithmic_features_tutorial.ipynb``,
+  ``pyfc_strategy_comparison_tutorial.ipynb`` ->
+  ``05_pyfc_strategy_comparison_tutorial.ipynb``,
+  ``pyfc_joint_constraints_tutorial.ipynb`` ->
+  ``06_pyfc_joint_constraints_tutorial.ipynb``.
+
+  .. warning::
+     **Migration:** update any bookmarks, scripts, or CI steps that
+     reference the old filenames directly (nothing in this repository's
+     own code or CI did). Each notebook's own "Next steps" cross-
+     references and every mention in README.md/:doc:`installation` were
+     updated to match; past changelog entries below that predate this
+     rename still use the old names, as a historical record of what was
+     true when they were written.
 
 Fixed
 ~~~~~
@@ -381,6 +406,18 @@ Fixed
     :doc:`configuration`'s table are updated to describe what actually
     happens now, plus a new README "Adaptive Toy Generation" section
     (mirroring the existing "Contour Edge Tracing" section's depth).
+* **``generate_config.py``'s interactive wizard still offered four
+  default answers that disagreed with ``compute_fc_intervals``'s own
+  (already README-aligned) defaults**, missed when those defaults were
+  unified earlier in this release: ``n_toys`` (wizard default ``2000``
+  vs. ``500``), ``smooth_1d``/``smooth_2d`` (wizard default ``n`` vs.
+  ``True``), and ``save_log`` (wizard default ``n`` vs. ``True``). Anyone
+  who ran the wizard and accepted every default (the documented,
+  intended workflow) would get a config that silently diverged from what
+  README.md and ``pyfc/config.py``'s own base config dict both call "the"
+  default. Unified all four; the wizard's defaults now match everywhere
+  else exactly, so pressing Enter on every question reproduces
+  ``compute_fc_intervals``'s own defaults.
 
 Added
 ~~~~~

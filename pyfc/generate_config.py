@@ -240,7 +240,7 @@ def main():
 
     config["n_toys"] = get_input(
         "3. Number of Toys to generate?",
-        default_val=2000,
+        default_val=500,
         cast_func=int,
         validator=lambda x: x > 0,
         error_msg="Number of toys must be a positive integer."
@@ -307,13 +307,13 @@ def main():
 
     config["smooth_1d"] = get_input(
         "12. Apply smoothing to 1D corner plot contours (y/n)?",
-        default_val="n",
+        default_val="y",
         cast_func=parse_bool
     )
 
     config["smooth_2d"] = get_input(
         "13. Apply smoothing to 2D corner plot contours (y/n)?",
-        default_val="n",
+        default_val="y",
         cast_func=parse_bool
     )
 
@@ -341,7 +341,7 @@ def main():
     # --- File I/O ---
     config["save_log"] = get_input(
         "17. Save output to a log file (y/n)?",
-        default_val="n",
+        default_val="y",
         cast_func=parse_bool
     )
 
