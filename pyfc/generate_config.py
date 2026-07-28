@@ -30,7 +30,8 @@ Interactive Instructions:
 - For list inputs (like Confidence Levels), provide values separated by commas 
   (e.g., 0.68, 0.90, 0.95).
 
-Date: July 24, 2026
+Created: v0.1.0 (July 24, 2026)
+Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 
@@ -239,7 +240,7 @@ def main():
 
     config["n_toys"] = get_input(
         "3. Number of Toys to generate?",
-        default_val=2000,
+        default_val=500,
         cast_func=int,
         validator=lambda x: x > 0,
         error_msg="Number of toys must be a positive integer."
@@ -253,28 +254,38 @@ def main():
         choices=["scipy", "ultranest", "hybrid", "grid"]
     )
 
+    config["scipy_method"] = get_input(
+        "5. Override scipy.optimize.minimize's method ('auto' picks L-BFGS-B, or SLSQP if constraints are supplied programmatically)?",
+        default_val="auto",
+        cast_func=str,
+        choices=["auto", "L-BFGS-B", "SLSQP", "trust-constr"]
+    )
+    # Map the "auto" sentinel back to None for the orchestrator
+    if config["scipy_method"] == "auto":
+        config["scipy_method"] = None
+
     config["use_finite_mc_correction_binned"] = get_input(
-        "5. Use finite MC correction for binned likelihoods (y/n)?",
+        "6. Use finite MC correction for binned likelihoods (y/n)?",
         default_val="y",
         cast_func=parse_bool
     )
 
     # --- Compute Modes ---
     config["compute_1D_intervals"] = get_input(
-        "6. Compute 1D Intervals (y/n)?",
+        "7. Compute 1D Intervals (y/n)?",
         default_val="y",
         cast_func=parse_bool
     )
 
     config["compute_2D_intervals"] = get_input(
-        "7. Compute 2D Intervals (y/n)?",
+        "8. Compute 2D Intervals (y/n)?",
         default_val="y",
         cast_func=parse_bool
     )
 
     # --- Hardware & Execution Setup ---
     config["num_cores"] = get_input(
-        "8. Number of CPU cores to use (enter 0 for maximum available)?",
+        "9. Number of CPU cores to use (enter 0 for maximum available)?",
         default_val=0,
         cast_func=int,
         validator=lambda x: x >= 0,
@@ -285,46 +296,46 @@ def main():
         config["num_cores"] = None
 
     config["verbose"] = get_input(
-        "9. Verbosity level (0=Silent, 1=Standard, 2=Detailed)?",
+        "10. Verbosity level (0=Silent, 1=Standard, 2=Detailed)?",
         default_val=1,
         cast_func=int,
         choices=[0, 1, 2]
     )
 
     config["warm_start"] = get_input(
-        "10. Enable Warm Start / Checkpointing (y/n)?",
+        "11. Enable Warm Start / Checkpointing (y/n)?",
         default_val="y",
         cast_func=parse_bool
     )
 
     # --- Plotting & Visuals ---
     config["param_names"] = get_input(
-        "11. Parameter names for plotting (comma-separated)?",
+        "12. Parameter names for plotting (comma-separated)?",
         default_val="param1, param2, param3",
         cast_func=parse_str_list
     )
 
     config["smooth_1d"] = get_input(
-        "12. Apply smoothing to 1D corner plot contours (y/n)?",
-        default_val="n",
+        "13. Apply smoothing to 1D corner plot contours (y/n)?",
+        default_val="y",
         cast_func=parse_bool
     )
 
     config["smooth_2d"] = get_input(
-        "13. Apply smoothing to 2D corner plot contours (y/n)?",
-        default_val="n",
+        "14. Apply smoothing to 2D corner plot contours (y/n)?",
+        default_val="y",
         cast_func=parse_bool
     )
 
     # --- Advanced Optimizer Flags ---
     config["adaptive_toys"] = get_input(
-        "14. Enable Adaptive Toys (y/n)?",
+        "15. Enable Adaptive Toys (y/n)?",
         default_val="y",
         cast_func=parse_bool
     )
 
     config["toy_batch_size"] = get_input(
-        "15. Toy generation batch size?",
+        "16. Toy generation batch size?",
         default_val=200,
         cast_func=int,
         validator=lambda x: x > 0,
@@ -332,32 +343,46 @@ def main():
     )
 
     config["sparsify_grid"] = get_input(
-        "16. Enable Grid Sparsification (y/n)?",
+        "17. Enable Grid Sparsification (y/n)?",
+        default_val="n",
+        cast_func=parse_bool
+    )
+
+    config["n_restarts"] = get_input(
+        "18. Number of restarts per DATA fit (scipy strategy only; keeps the lowest-NLL result)?",
+        default_val=1,
+        cast_func=int,
+        validator=lambda x: x > 0,
+        error_msg="Number of restarts must be a positive integer."
+    )
+
+    config["neighbor_seeding"] = get_input(
+        "19. Seed each DATA fit from an adjacent grid point's profiled parameters (y/n)?",
         default_val="y",
         cast_func=parse_bool
     )
 
     # --- File I/O ---
     config["save_log"] = get_input(
-        "17. Save output to a log file (y/n)?",
-        default_val="n",
+        "20. Save output to a log file (y/n)?",
+        default_val="y",
         cast_func=parse_bool
     )
 
     config["save_directory"] = get_input(
-        "18. Output directory path?",
-        default_val="fc_output",
+        "21. Output directory path?",
+        default_val="output/example_fc_output",
         cast_func=str
     )
 
     config["output_file"] = get_input(
-        "19. Output file prefix (without extension)?",
+        "22. Output file prefix (without extension)?",
         default_val="fc_results",
         cast_func=str
     )
 
     out_json_path = get_input(
-        "20. Path to save this configuration file to?",
+        "23. Path to save this configuration file to?",
         default_val="fc_config.json",
         cast_func=str
     )

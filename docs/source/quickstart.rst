@@ -4,47 +4,50 @@ Quick Start Guide
 .. note::
    Because PyFC evaluates abstract :math:`N`-dimensional grids, you **must** supply Python functions instructing the framework how to mathematically map a coordinate in parameter space to your physical expectations.
 
+.. note::
+   If two or more of your parameters are subject to a **joint** constraint (e.g. a simplex like ``a + b <= 1``) rather than independent per-parameter bounds, see :ref:`joint-simplex-constraints` for the ``bounds_func``/``constraints`` mechanisms before reaching for a hand-rolled penalty function.
+
 1. Binned Models
 ----------------
-For a binned analysis, ``S_model`` and ``B_model`` are passed as standard NumPy arrays representing fixed templates. You must write a ``compute_rates_func`` that combines them with your varied parameters to yield the total expected bin counts (:math:`\mu`) and variances (:math:`\sigma^2`).
+For a binned analysis, fixed templates are ordinary NumPy arrays referenced via closure (module-global or nested-function capture) from your ``compute_rates_func`` -- they are no longer passed in as function arguments. You must write a ``compute_rates_func`` that combines them with your varied parameters to yield the total expected bin counts (:math:`\mu`) and variances (:math:`\sigma^2`). ``data``/``mu``/``sigma2`` may be **any shape**, not just 1D -- a genuine 2D ``(E, cos_theta)`` histogram is fully supported and evaluated directly, with no need to flatten it yourself first.
 
 .. code-block:: python
 
    import numpy as np
    import json
    from numba import njit
-   from pyfc.orchestrator import compute_fc_intervals
+   from pyfc import compute_fc_intervals
 
-   # A) Define the physics mapper function
-   @njit(fastmath=True, nogil=True)
-   def my_compute_rates_binned(params, S_template, B_template, S_sigma2, B_sigma2):
-       """ Maps parameters to expected counts (mu) and simulated variances (sigma2). """
-       mu = (params[0] * params[1]) * S_template + params[2] * B_template
-       sigma2 = ((params[0] * params[1])**2) * S_sigma2 + (params[2]**2) * B_sigma2
-       return mu, sigma2
-
-   # B) Setup Data and Arrays
-   grids = [np.linspace(1e-9, 1e-7, 20), np.linspace(2.0, 3.0, 15), np.linspace(0.8, 1.2, 10)]
+   # A) Fixed templates as module-level constants, referenced via closure
    S_template = np.array([0.1, 0.5, 2.0, 5.0])
    B_template = np.array([15.0, 5.0, 1.0, 0.1])
+
+   # B) Define the physics mapper function
+   @njit(fastmath=True, nogil=True)
+   def my_compute_rates_binned(params, S_sumw2, B_sumw2):
+       """ Maps parameters to expected counts (mu) and simulated variances (sigma2). """
+       mu = (params[0] * params[1]) * S_template + params[2] * B_template
+       sigma2 = ((params[0] * params[1])**2) * S_sumw2 + (params[2]**2) * B_sumw2
+       return mu, sigma2
+
+   # C) Setup Data and Grids
+   grids = [np.linspace(1e-9, 1e-7, 20), np.linspace(2.0, 3.0, 15), np.linspace(0.8, 1.2, 10)]
    observed_counts = np.array([20, 7, 2, 0])
 
    with open('fc_config.json', 'r') as f:
        config = json.load(f)
 
-   # C) Execute
+   # D) Execute
    results = compute_fc_intervals(
        data=observed_counts,
-       S_model=S_template,
-       B_model=B_template,
        grids=grids,
        compute_rates_func=my_compute_rates_binned,
-       **config 
+       **config
    )
 
 2. Unbinned Models
 ------------------
-For unbinned data, ``S_model`` and ``B_model`` are Python functions that evaluate PDFs over exact kinematic coordinates. You must provide a ``compute_rates_func`` to yield the overall expected integral and localized probability density, alongside a ``generate_toy_func`` that handles parametric bootstrapping.
+For unbinned data, ``pdf_components`` is a **list** of Python functions that each evaluate a PDF over exact kinematic coordinates (signal, background, or any number of further components -- no longer limited to exactly two). Each is evaluated exactly once per fit and the resulting arrays are reused across every subsequent NLL evaluation in that fit. You must provide a ``compute_rates_func`` that consumes the pre-evaluated ``probs`` list to yield the overall expected integral and localized probability density, alongside a ``generate_toy_func`` that handles parametric bootstrapping.
 
 .. code-block:: python
 
@@ -56,8 +59,9 @@ For unbinned data, ``S_model`` and ``B_model`` are Python functions that evaluat
    def b_pdf(x): return expon.pdf(x, scale=2.0)
 
    # B) Define the physics mapper function
-   def my_compute_rates_unbinned(params, s_probs, b_probs):
+   def my_compute_rates_unbinned(params, probs):
        """ Returns total extended integral and unnormalized per-event density. """
+       s_probs, b_probs = probs[0], probs[1]
        expected_total = params[0] * params[1] + params[2]
        if len(s_probs) == 0 and len(b_probs) == 0:
            return expected_total, np.array([])
@@ -77,10 +81,17 @@ For unbinned data, ``S_model`` and ``B_model`` are Python functions that evaluat
    # D) Execute
    results = compute_fc_intervals(
        data=observed_events,
-       S_model=s_pdf,
-       B_model=b_pdf,
        grids=grids,
        compute_rates_func=my_compute_rates_unbinned,
        generate_toy_func=my_generate_unbinned_toy,
-       **config 
+       pdf_components=[s_pdf, b_pdf],
+       **config
    )
+
+.. note::
+   :func:`np.random.choice` (used above) only works for a **1D** MC pool.
+   If your events are N-D feature vectors (``mc_pool.shape == (n_events,
+   n_features)``), resample by index instead:
+   ``idx = np.random.choice(len(mc_pool), size=n, replace=True); toy_events
+   = mc_pool[idx]``. Silently applying ``np.random.choice`` directly to an
+   N-D array samples along the wrong axis and does not raise an error.

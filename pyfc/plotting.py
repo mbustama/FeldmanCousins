@@ -6,7 +6,8 @@ publication-quality corner plots that map the multi-dimensional parameter space.
 It visualizes both the 1D Profile Likelihood Ratios (with integrated Monte Carlo 
 thresholds) and the 2D joint confidence contours using matplotlib.
 
-Date: July 24, 2026
+Created: v0.1.0 (July 24, 2026)
+Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 
@@ -61,9 +62,12 @@ def generate_corner_plot(results, config):
 
     Returns:
     --------
-    None
-        The figure is saved to disk as `fc_corner_plot.pdf` and the matplotlib 
-        environment is closed to free memory.
+    fig : matplotlib.figure.Figure, or None
+        The generated figure, also saved to disk as `fc_corner_plot.pdf`.
+        The caller owns the returned figure and is responsible for closing
+        it (e.g. `plt.close(fig)`) if generating many plots in a loop --
+        this function does not close it itself. Returns None instead if
+        matplotlib isn't installed (`MATPLOTLIB_AVAILABLE` is False).
     """
     if not MATPLOTLIB_AVAILABLE:
         return
@@ -172,9 +176,7 @@ def generate_corner_plot(results, config):
                 tol = 1e-2
                 if np.min(z_diff) <= (0.0 + tol) and np.max(z_diff) >= (0.0 - tol):
                     ax.contour(X, Y, z_diff, levels=[0.0], colors=[colors[idx % len(colors)]], linewidths=2)
-                # if np.min(z_diff) <= 0.0 <= np.max(z_diff):
-                #     ax.contour(X, Y, z_diff, levels=[0.0], colors=[colors[idx % len(colors)]], linewidths=2)
-                
+
                 # Generate a dummy line exclusively to populate the legend on the bottom-left plot
                 if row == n_params - 1 and col == 0: 
                     ax.plot([], [], color=colors[idx % len(colors)], linewidth=2, label=f'{c} CL Contour')
@@ -212,4 +214,3 @@ def generate_corner_plot(results, config):
     plot_path = os.path.join(config.get("save_directory", "."), "fc_corner_plot.pdf")
     plt.savefig(plot_path, bbox_inches='tight')
     return fig
-    # plt.close()

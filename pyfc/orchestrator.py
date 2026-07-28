@@ -22,7 +22,8 @@ You can override configuration parameters directly via command-line arguments.
 For example, to run an unbinned analysis with 500 toys using the SciPy optimizer:
     $ python orchestrator.py --likelihood_type unbinned --n_toys 500 --strategy scipy
 
-Date: July 24, 2026
+Created: v0.1.0 (July 24, 2026)
+Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 
@@ -33,6 +34,7 @@ import itertools
 import json
 import logging
 import os
+import warnings
 
 import numpy as np
 
@@ -156,6 +158,47 @@ def _save_fc_archive(results, grids, output_path, cl, compute_1D_intervals, comp
     np.savez(output_path, **save_dict)
 
 
+def _find_contiguous_intervals(test_points, accepted):
+    """
+    Finds every maximal contiguous run of `accepted=True` in `test_points`
+    (assumed ascending, e.g. built from `np.linspace`) and returns one
+    `[lo, hi]` pair per run, in scan order.
+
+    Under the Feldman-Cousins unified construction, the accepted region
+    for a parameter can in principle be genuinely disconnected near
+    certain physical boundaries -- taking a single min/max across all
+    accepted points would silently merge separate intervals into one,
+    including whatever rejected gap sits between them.
+
+    Parameters:
+    -----------
+    test_points : array_like, 1D
+        The scanned parameter values, in ascending order.
+    accepted : array_like of bool, 1D
+        Same length as `test_points`; True where that point is inside the
+        confidence region.
+
+    Returns:
+    --------
+    list of [float, float]
+        One `[lo, hi]` pair per maximal contiguous accepted run, in scan
+        order. Empty list if nothing is accepted.
+    """
+    intervals = []
+    run_start = None
+    prev_val = None
+    for val, is_acc in zip(test_points, accepted):
+        if is_acc and run_start is None:
+            run_start = val
+        elif not is_acc and run_start is not None:
+            intervals.append([run_start, prev_val])
+            run_start = None
+        prev_val = val
+    if run_start is not None:
+        intervals.append([run_start, prev_val])
+    return intervals
+
+
 def _save_fc_json(results, output_path, cl, compute_1D_intervals, compute_2D_intervals, n_params):
     """
     Exports computed 1D and 2D intervals to an external, human-readable JSON format.
@@ -201,14 +244,15 @@ def _save_fc_json(results, output_path, cl, compute_1D_intervals, compute_2D_int
             for c in cl:
                 accepted = results[f"1d_accepted_p{p_idx+1}"][c]
                 interval_bounds = []
-                
-                # Extract min and max bounds for the accepted points
+
+                # One [lo, hi] pair per maximal contiguous accepted run, not
+                # a single min/max across all accepted points -- the latter
+                # would silently merge disconnected accepted regions (a real
+                # possibility under the Feldman-Cousins unified construction)
+                # into one interval spanning whatever rejected gap sits
+                # between them.
                 if test_points is not None and accepted is not None:
-                    accepted_points = [
-                        val for val, is_acc in zip(test_points, accepted) if is_acc
-                    ]
-                    if accepted_points:
-                        interval_bounds = [min(accepted_points), max(accepted_points)]
+                    interval_bounds = _find_contiguous_intervals(test_points, accepted)
                 
                 json_dict["1d_intervals"][p_key]["thresholds"][str(c)] = {
                     "t_critical": results[f"1d_t_critical_p{p_idx+1}"][c],
@@ -237,15 +281,18 @@ def _save_fc_json(results, output_path, cl, compute_1D_intervals, compute_2D_int
         json.dump(json_dict, f, cls=NumpyEncoder, indent=4)
 
 
-def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None, generate_toy_func=None,
-                         cl=None, n_toys=2000, strategy="scipy", num_cores=None, verbose=1,
-                         adaptive_toys=True, toy_batch_size=200, 
-                         sparsify_grid=True, warm_start=True,
+def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func=None,
+                         pdf_components=None,
+                         cl=None, n_toys=500, strategy="scipy", num_cores=None, verbose=1,
+                         adaptive_toys=True, toy_batch_size=200,
+                         sparsify_grid=False, warm_start=True,
                          likelihood_type="binned", S_mc_pool=None, B_mc_pool=None,
-                         output_file=None, save_log=False, save_directory="fc_output",
-                         use_finite_mc_correction_binned=True, S_sigma2=None, B_sigma2=None,
+                         output_file=None, save_log=True, save_directory="output/example_fc_output",
+                         use_finite_mc_correction_binned=True, S_sumw2=None, B_sumw2=None,
                          compute_1D_intervals=True, compute_2D_intervals=True, param_names=None,
-                         smooth_1d=False, smooth_2d=False):
+                         smooth_1d=True, smooth_2d=True, bounds_func=None,
+                         constraints=None, scipy_method=None,
+                         n_restarts=1, neighbor_seeding=True):
     """
     Main execution pipeline for the Feldman-Cousins unified approach.
     
@@ -272,15 +319,28 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
     Parameters:
     -----------
     data : array_like
-        The observed data (binned counts or unbinned events).
-    S_model, B_model : callable or array_like
-        Signal and background structural models/templates.
+        The observed data: binned counts (any N-dimensional shape, e.g. a
+        genuine 2D (E, cos_theta) histogram) or unbinned events.
     grids : list of np.ndarray
         A list of arrays, each defining the evaluation points for a parameter.
     compute_rates_func : callable
-        User-provided mapping function matching parameters to physical expectations.
+        User-provided mapping function matching parameters to physical
+        expectations. For `likelihood_type="binned"`:
+        `(params, S_sumw2, B_sumw2) -> (mu, sigma2)`, where `mu`/`sigma2`
+        must have the same shape as `data`; any fixed template arrays should
+        be referenced via closure/module-global rather than passed in. For
+        `likelihood_type="unbinned"`: `(params, probs) -> (expected_total,
+        p_events)`, where `probs` is the list of pre-evaluated
+        `pdf_components` densities.
     generate_toy_func : callable, optional
         User-provided unbinned parametric bootstrap function.
+    pdf_components : list of callable, optional
+        Probability density functions, one per model component (e.g.
+        signal, background, ...no longer limited to exactly two). Required
+        for `likelihood_type="unbinned"`; ignored (with a warning) for
+        `"binned"`. Each is evaluated exactly once per fit as `pdf(data)`
+        and the resulting arrays are reused across every subsequent NLL
+        evaluation in that fit.
     cl : list of float, optional
         Confidence levels to compute (e.g., [0.68, 0.90]).
     n_toys : int, optional
@@ -288,27 +348,130 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
     strategy : str, optional
         Optimizer strategy: "grid", "scipy", "ultranest", or "hybrid".
     num_cores : int, optional
-        Number of parallel threads for toy generation.
+        Number of parallel threads for toy generation. Defaults to None,
+        which is forwarded as-is to the underlying
+        `ThreadPoolExecutor`/`ProcessPoolExecutor`/`numba.set_num_threads`
+        calls; all three treat None as "use every available hardware
+        thread" (equivalent to `os.cpu_count()`). Pass an explicit integer
+        to cap this, e.g. to match a Slurm/PBS core allocation.
     verbose : int, optional
         0 = Silent, 1 = Normal, 2 = Debug.
-    adaptive_toys, toy_batch_size, sparsify_grid, warm_start : bool/int
-        Algorithmic enhancements to reduce execution time.
+    adaptive_toys : bool, optional
+        When True and strategy in ("scipy", "ultranest", "hybrid"), stops
+        generating toys for a grid point early once its accept/reject
+        verdict is statistically settled (a strict 99.9% Wilson confidence
+        interval on the running p-value estimate lies entirely on one side
+        of the target significance, and at least `toys.ADAPTIVE_MIN_TOYS`
+        toys have been generated) -- see `toys._adaptive_stop_decision`.
+        This only meaningfully saves time for points far from the accept/
+        reject boundary; points near it will and should run the full
+        `n_toys`. No effect for strategy="grid" (its toy generators are a
+        `numba` `prange`-parallelized batch operation, not a natural fit
+        for a sequential early-exit check).
+    toy_batch_size : int, optional
+        For strategy in ("scipy", "ultranest", "hybrid"), toys are
+        submitted/collected from the executor in batches of this size
+        instead of all `n_toys` at once, bounding how many toy datasets /
+        in-flight results are alive at once (matters most for
+        `likelihood_type="unbinned"`; binned toys are small fixed-size
+        per-bin arrays with no comparable memory concern). Also the
+        granularity at which `adaptive_toys` checks its stopping
+        condition. Same total `n_toys` are generated either way when
+        `adaptive_toys=False` -- this only changes memory/dispatch
+        pattern, never the statistics. No effect for strategy="grid".
+    warm_start : bool
+        Algorithmic enhancement to reduce execution time via checkpointing.
+    sparsify_grid : bool, optional
+        For 2D scans, coarsely samples the grid and interpolates the
+        t_critical surface, then refines only cells adjacent to the
+        interpolated accept/reject boundary, instead of evaluating every
+        cell. Defaults to False. Known limitation: refinement is a single,
+        non-iterative pass with a 1-cell-wide halo around ~5-per-axis
+        coarse nodes, so for grids much larger than ~20x20 per axis it
+        under-counts the true accepted region (deep interior/exterior cells
+        far from any coarse node are never evaluated and are force-excluded
+        as a result). See the comment above the "Sparsification Array
+        Tracing" block in this function's body for details.
     likelihood_type : str
         "binned" or "unbinned".
     S_mc_pool, B_mc_pool : array_like, optional
         Pool of events to bootstrap for unbinned toy generation.
     output_file, save_log, save_directory : str/bool
-        I/O file structures.
+        I/O file structures. `save_directory` (default `"output/example_fc_output"`,
+        relative to the current working directory) is where checkpoints and final
+        results are written; see the README's "Outputs, Plots, and Checkpointing"
+        section. `output_file` defaults to None, meaning no final `.npz`/`.json`
+        archive is written -- only the in-memory `results` dict (this function's
+        first return value) is populated; pass a string prefix (e.g. `"fc_results"`)
+        to also write `{save_directory}/{output_file}.npz` and `.json`.
     use_finite_mc_correction_binned : bool, optional
         Toggle for Poisson-Gamma mixture likelihood.
-    S_sigma2, B_sigma2 : array_like, optional
-        Template variances for the finite MC correction.
+    S_sumw2, B_sumw2 : array_like, optional
+        Sum of squared MC weights (sumw2) per bin, for the finite MC correction.
     compute_1D_intervals, compute_2D_intervals : bool
         Switches for calculating 1D profiles or 2D joint contours.
     param_names : list of str, optional
-        Names used for plot labels.
+        Names used for plot labels. Defaults to None, which auto-generates
+        `["param1", "param2", ...]` matching `len(grids)` -- i.e. it always
+        matches the actual number of parameters in this specific model,
+        unlike hardcoding a fixed-length example list would.
     smooth_1d, smooth_2d : bool, optional
         Toggles interpolation smoothing for final plot outputs.
+    bounds_func : callable, optional
+        Advanced hook that lets the box bounds of the profiled (free)
+        parameters depend on whatever parameter(s) are currently fixed by
+        the scan, e.g. to express a joint constraint like f_e + f_mu <= 1
+        without a user-side penalty function. Forwarded to whichever
+        `conditional_fit_*`/`unconditional_fit_*` optimizer is active (scipy
+        or ultranest strategies only; ignored for strategy="grid"). See the
+        `optimizers.py` module docstring for the full signature contract and
+        a worked example, and the README section "Handling joint/simplex-
+        constrained parameters" for an end-to-end walkthrough. Limitation:
+        this only handles constraints between a currently-FIXED test
+        parameter and a free nuisance parameter -- it cannot express a
+        constraint between two parameters that are BOTH free at the same
+        time (use `constraints` for that instead).
+    constraints : list of scipy.optimize.LinearConstraint/NonlinearConstraint, optional
+        Joint constraints among the FULL n_params vector, for expressing
+        constraints between multiple simultaneously-free nuisance parameters
+        (which `bounds_func` cannot express). Forwarded to whichever scipy/
+        ultranest optimizer is active; ignored for strategy="grid". For the
+        scipy path, `method` switches from 'L-BFGS-B' to 'SLSQP' whenever
+        constraints are non-empty (required, since L-BFGS-B doesn't support
+        `constraints`); for the ultranest path, a violated constraint simply
+        yields a very large negative log-likelihood at that point. When
+        None/empty (default), behavior and method are UNCHANGED from before
+        this parameter existed. See the `optimizers.py` module docstring and
+        the README section "Handling joint/simplex-constrained parameters".
+    scipy_method : str, optional
+        Explicit override for the `scipy.optimize.minimize` method (e.g.
+        'trust-constr' for better-conditioned but slower constrained fits).
+        Takes precedence over the constraints-based default.
+    n_restarts : int, optional
+        Forwarded to the scipy fit functions for the DATA fits (Phase 0's
+        unconditional fit and the Phase 1/2 conditional fits) -- NOT the MC
+        toy fits, which are already well-seeded from the conditional MLE
+        (`true_params`). Number of distinct starting points to try per fit,
+        keeping whichever converges to the lowest NLL (see
+        `optimizers._minimize_with_restarts`). Default 1 preserves pre-
+        FIX-4 behavior (a single fit per point), except that `res.success`
+        is now always checked, with a cheap perturbed retry and warning on
+        non-convergence -- this applies even at the default n_restarts=1,
+        for every scipy fit call including the toy fits.
+    neighbor_seeding : bool, optional
+        When True (default) and strategy="scipy", the DATA fit (not the MC
+        toys, which are already seeded from the conditional MLE) at each 1D/
+        2D scan grid point is seeded from an adjacent, already-evaluated
+        grid point's profiled parameters, instead of always starting fresh
+        from the bounds midpoint -- these loops already iterate the grid in
+        order, so neighboring points' solutions are informative starting
+        guesses. Whenever a neighbor seed is used, the effective number of
+        restarts for that specific call is raised to at least 2 (the
+        neighbor-seeded start plus a fresh bounds-midpoint start, keeping
+        whichever is better), so a bad neighbor optimum can't silently
+        cascade forward across many subsequent grid points. Set False to
+        disable and always start from the bounds midpoint (the original
+        behavior for the data fit).
 
     Returns:
     --------
@@ -322,9 +485,13 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
     
     if compute_rates_func is None:
         raise ValueError("You must provide a valid `compute_rates_func` to define your physical model.")
+    if likelihood_type == "unbinned" and not pdf_components:
+        raise ValueError("You must provide a non-empty `pdf_components` list (of callables) for likelihood_type='unbinned'.")
+    if likelihood_type == "binned" and pdf_components:
+        warnings.warn("`pdf_components` was supplied but is unused for likelihood_type='binned'; ignoring it.")
 
     if cl is None:
-        cl = [0.90]
+        cl = [0.68, 0.90]
         
     os.makedirs(save_directory, exist_ok=True)
     n_params = len(grids)
@@ -343,19 +510,29 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
         if save_log: run_logger.info(msg)
 
     # Coerce input configurations
-    if isinstance(cl, (float, int)): 
+    if isinstance(cl, (float, int)):
         cl = [float(cl)]
-    if ULTRANEST_AVAILABLE and verbose < 2: 
+    if ULTRANEST_AVAILABLE and verbose < 2:
         logging.getLogger("ultranest").setLevel(logging.WARNING)
-    if NUMBA_AVAILABLE and num_cores is not None: 
+    if NUMBA_AVAILABLE and num_cores is not None:
         set_num_threads(num_cores)
+
+    # Target significance for adaptive_toys' early-stopping decision: the
+    # *smallest* alpha (largest requested CL) is the hardest accept/reject
+    # verdict to settle, so requiring it to be settled before stopping
+    # guarantees every other requested CL's verdict is settled too (they
+    # all come from the same toy sample). Only used when adaptive_toys=True
+    # and only affects strategy in ("scipy", "ultranest", "hybrid") --
+    # strategy="grid"'s toy generators are unaffected (see their own
+    # docstrings for why).
+    adaptive_alpha = 1.0 - max(cl)
         
     # Setup likelihood variances for Finite MC
     if likelihood_type == "binned":
-        if S_sigma2 is None: S_sigma2 = np.zeros_like(S_model)
-        if B_sigma2 is None: B_sigma2 = np.zeros_like(B_model)
+        if S_sumw2 is None: S_sumw2 = np.zeros_like(data)
+        if B_sumw2 is None: B_sumw2 = np.zeros_like(data)
     else:
-        S_sigma2, B_sigma2 = None, None
+        S_sumw2, B_sumw2 = None, None
 
     log_print(f"--- FC Construction Initiated ({n_params}-Parameter Model) ---")
     log_print(f"Modes -> 1D Intervals: {compute_1D_intervals} | 2D Intervals: {compute_2D_intervals}")
@@ -443,13 +620,13 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
     if np.isnan(results["data_uncond_nll"]):
         if strategy == "grid":
             if likelihood_type == "binned":
-                data_uncond_nll, best_params = unconditional_fit_grid(data, S_model, B_model, full_grid_points, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func)
+                data_uncond_nll, best_params = unconditional_fit_grid(data, full_grid_points, S_sumw2, B_sumw2, use_finite_mc_correction_binned, compute_rates_func)
             else:
-                data_uncond_nll, best_params = unconditional_fit_grid_unbinned(data, S_model, B_model, full_grid_points, compute_rates_func)
+                data_uncond_nll, best_params = unconditional_fit_grid_unbinned(data, pdf_components, full_grid_points, compute_rates_func)
         elif strategy in ["ultranest", "hybrid"]:
-            data_uncond_nll, best_params = unconditional_fit_ultranest(data, S_model, B_model, n_params, bounds_list, compute_rates_func, verbose, likelihood_type, S_sigma2, B_sigma2, use_finite_mc_correction_binned)
+            data_uncond_nll, best_params = unconditional_fit_ultranest(data, n_params, bounds_list, compute_rates_func, verbose=verbose, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
         elif strategy == "scipy":
-            data_uncond_nll, best_params = unconditional_fit_scipy(data, S_model, B_model, n_params, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
+            data_uncond_nll, best_params = unconditional_fit_scipy(data, n_params, bounds_list, compute_rates_func, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, n_restarts=n_restarts)
         
         results["best_fit"] = best_params
         results["data_uncond_nll"] = data_uncond_nll
@@ -485,13 +662,24 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                     
                 if strategy == "grid":
                     if likelihood_type == "binned":
-                        cond_nll, prof_p = conditional_fit_grid_1d(pt, p_idx, n_params, data, S_model, B_model, cond_grid_points, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func) 
+                        cond_nll, prof_p = conditional_fit_grid_1d(pt, p_idx, n_params, data, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc_correction_binned, compute_rates_func)
                     else:
-                        cond_nll, prof_p = conditional_fit_grid_unbinned_1d(pt, p_idx, n_params, data, S_model, B_model, cond_grid_points, compute_rates_func)
+                        cond_nll, prof_p = conditional_fit_grid_unbinned_1d(pt, p_idx, n_params, data, pdf_components, cond_grid_points, compute_rates_func)
                 elif strategy in ["ultranest", "hybrid"]:
-                    cond_nll, prof_p = conditional_fit_1d_ultranest(pt, p_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose, likelihood_type, S_sigma2, B_sigma2, use_finite_mc_correction_binned)
+                    cond_nll, prof_p = conditional_fit_1d_ultranest(pt, p_idx, n_params, data, bounds_list, compute_rates_func, verbose=verbose, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
                 elif strategy == "scipy":
-                    cond_nll, prof_p = conditional_fit_1d_scipy(pt, p_idx, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
+                    # Neighbor warm-start: seed this grid point's DATA fit from the
+                    # immediately preceding (already-evaluated) grid point's profiled
+                    # nuisance parameters, instead of always starting fresh from the
+                    # bounds midpoint. Paired with a forced-up n_restarts (>= 2) so a
+                    # bad neighbor optimum can't silently cascade forward -- the fresh
+                    # bounds-midpoint start is always tried alongside it.
+                    neighbor_seed = None
+                    effective_n_restarts = n_restarts
+                    if neighbor_seeding and i > 0 and not np.any(np.isnan(prof_params_arr[i - 1])):
+                        neighbor_seed = [prof_params_arr[i - 1][k] for k in range(n_params) if k != p_idx]
+                        effective_n_restarts = max(n_restarts, 2)
+                    cond_nll, prof_p = conditional_fit_1d_scipy(pt, p_idx, n_params, data, bounds_list, compute_rates_func, seed=neighbor_seed, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, n_restarts=effective_n_restarts)
                 
                 prof_params_arr[i] = prof_p
                 # Evaluate the actual PLR data statistic (bounded at 0 to fix numerical floating point noise)
@@ -506,15 +694,20 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                 
                 if strategy == "grid":
                     if likelihood_type == "binned":
-                        t_stats = generate_and_fit_toys_grid_1d(pt, p_idx, true_params, n_params, S_model, B_model, full_grid_points, cond_grid_points, n_toys, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func) 
+                        t_stats = generate_and_fit_toys_grid_1d(pt, p_idx, true_params, n_params, full_grid_points, cond_grid_points, n_toys, S_sumw2, B_sumw2, use_finite_mc_correction_binned, compute_rates_func)
                     else:
-                        t_stats = generate_and_fit_toys_grid_unbinned_1d(pt, p_idx, true_params, n_params, S_model, B_model, full_grid_points, cond_grid_points, n_toys, S_mc_pool, B_mc_pool, compute_rates_func, generate_toy_func)
+                        t_stats = generate_and_fit_toys_grid_unbinned_1d(pt, p_idx, true_params, n_params, pdf_components, full_grid_points, cond_grid_points, n_toys, S_mc_pool, B_mc_pool, compute_rates_func, generate_toy_func)
                 else:
-                    t_stats = generate_and_fit_toys_python(true_params, n_params, "1d", p_idx, None, None, pt, None, S_model, B_model, bounds_list, n_toys, strategy, num_cores, 0, likelihood_type, S_mc_pool, B_mc_pool, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func, generate_toy_func)
-                
+                    t_stats = generate_and_fit_toys_python(true_params, n_params, "1d", p_idx, None, None, pt, None, bounds_list, n_toys, strategy, num_cores=num_cores, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_mc_pool=S_mc_pool, B_mc_pool=B_mc_pool, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, compute_rates_func=compute_rates_func, generate_toy_func=generate_toy_func, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, toy_batch_size=toy_batch_size, adaptive_toys=adaptive_toys, t_data=t_data_arr[i], alpha=adaptive_alpha)
+
                 t_stats.sort()
-                for c in cl: 
-                    t_crit_dict[c][i] = t_stats[min(int(c * n_toys), n_toys - 1)]
+                # Quantile index uses len(t_stats), not n_toys: adaptive_toys
+                # may have stopped this point early with fewer toys than
+                # n_toys (strategy="grid" always returns exactly n_toys, so
+                # this is a no-op there).
+                n_generated = len(t_stats)
+                for c in cl:
+                    t_crit_dict[c][i] = t_stats[min(int(c * n_generated), n_generated - 1)]
                     
             results[f"1d_accepted_p{p_idx+1}"] = {c: t_data_arr <= t_crit_dict[c] for c in cl}
             
@@ -538,59 +731,108 @@ def compute_fc_intervals(data, S_model, B_model, grids, compute_rates_func=None,
                     cond_grid_points = np.array(list(itertools.product(*free_grids)), dtype=np.float64)
             else:
                 cond_grid_points = None
-            
-            # Helper function to evaluate toys for a specific (i, j) 2D coordinate 
+
+            # In-memory cache of already-evaluated (i, j) -> full profiled parameter
+            # vector, scoped to this pair's scan, used for neighbor warm-starting
+            # below (mirrors the 1D loop's use of prof_params_arr, which the 2D scan
+            # has no persistent equivalent of).
+            prof_params_2d = {}
+
+            def _lookup_2d_neighbor_seed(i, j):
+                if not neighbor_seeding:
+                    return None
+                for ni, nj in ((i - 1, j), (i, j - 1)):
+                    if (ni, nj) in prof_params_2d:
+                        neighbor_full = prof_params_2d[(ni, nj)]
+                        return [neighbor_full[k] for k in range(n_params) if k not in (fix_A, fix_B)]
+                return None
+
+            # Helper function to evaluate toys for a specific (i, j) 2D coordinate
             def eval_2d_point(i, j, pair_name=pair_name, gridA=gridA, gridB=gridB, fix_A=fix_A, fix_B=fix_B, cond_grid_points=cond_grid_points):
-                if not np.isnan(results[f"2d_t_critical_{pair_name}"][cl[0]][i, j]):
+                # Keyed off 2d_t_data, not 2d_t_critical: the coarse-to-fine
+                # interpolation step below fills in 2d_t_critical for every cell
+                # (coarse and refined alike) with an interpolated estimate, not a
+                # real toy-evaluated one. Checking 2d_t_critical here would make
+                # every refinement cell look "already done" and turn the boundary
+                # refinement pass into a silent no-op. 2d_t_data is only ever set
+                # by Step 1 below (an exact conditional fit), so its NaN-ness
+                # accurately reflects whether this point has actually been
+                # evaluated, regardless of the interpolation pass.
+                if not np.isnan(results[f"2d_t_data_{pair_name}"][i, j]):
                     return
-                    
+
                 p_A, p_B = gridA[i], gridB[j]
-                
-                # Step 1. Exact Data NLL Calculation (Profiling out remaining nuisance pars)
-                if np.isnan(results[f"2d_t_data_{pair_name}"][i, j]):
-                    if strategy == "grid":
-                        if likelihood_type == "binned": 
-                            cond_nll, prof_p = conditional_fit_grid_2d(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, cond_grid_points, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func)
-                        else: 
-                            cond_nll, prof_p = conditional_fit_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, cond_grid_points, compute_rates_func)
-                    elif strategy in ["ultranest", "hybrid"]:
-                        cond_nll, prof_p = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
-                    elif strategy == "scipy":
-                        cond_nll, prof_p = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
-                    
-                    results[f"2d_t_data_{pair_name}"][i, j] = max(0.0, cond_nll - data_uncond_nll)
-                    true_params = prof_p
-                else:
-                    # Rerun extremely rapid exact data fitting to retrieve the localized profiling if bypassing saved data.
-                    if strategy == "grid":
-                        if likelihood_type == "binned": 
-                            _, true_params = conditional_fit_grid_2d(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, cond_grid_points, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func)
-                        else: 
-                            _, true_params = conditional_fit_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, cond_grid_points, compute_rates_func)
-                    elif strategy in ["ultranest", "hybrid"]:
-                        _, true_params = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, verbose=0, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
-                    elif strategy == "scipy":
-                        _, true_params = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, S_model, B_model, bounds_list, compute_rates_func, likelihood_type=likelihood_type, S_sigma2=S_sigma2, B_sigma2=B_sigma2, use_finite_mc=use_finite_mc_correction_binned)
-                
+
+                # Neighbor warm-start: seed this cell's DATA fit from an adjacent,
+                # already-evaluated cell's profiled nuisance parameters. Paired with
+                # a forced-up n_restarts (>= 2) so a bad neighbor optimum can't
+                # silently cascade -- a fresh bounds-midpoint start is always tried
+                # alongside it.
+                neighbor_seed = _lookup_2d_neighbor_seed(i, j) if strategy == "scipy" else None
+                effective_n_restarts = max(n_restarts, 2) if neighbor_seed is not None else n_restarts
+
+                # Step 1. Exact Data NLL Calculation (Profiling out remaining nuisance pars).
+                # 2d_t_data is always NaN at this point -- the guard at the top of this
+                # function already returned otherwise -- so there is only one case to
+                # handle here, not a NaN/already-computed branch.
+                if strategy == "grid":
+                    if likelihood_type == "binned":
+                        cond_nll, prof_p = conditional_fit_grid_2d(p_A, p_B, fix_A, fix_B, n_params, data, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc_correction_binned, compute_rates_func)
+                    else:
+                        cond_nll, prof_p = conditional_fit_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, n_params, data, pdf_components, cond_grid_points, compute_rates_func)
+                elif strategy in ["ultranest", "hybrid"]:
+                    cond_nll, prof_p = conditional_fit_2d_ultranest(p_A, p_B, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints)
+                elif strategy == "scipy":
+                    cond_nll, prof_p = conditional_fit_2d_scipy(p_A, p_B, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, seed=neighbor_seed, pdf_components=pdf_components, likelihood_type=likelihood_type, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, n_restarts=effective_n_restarts)
+
+                results[f"2d_t_data_{pair_name}"][i, j] = max(0.0, cond_nll - data_uncond_nll)
+                true_params = prof_p
+
+                if strategy == "scipy":
+                    prof_params_2d[(i, j)] = true_params
+
                 # Step 2. Sequential Toy Assessment to get critical threshold for coverage
                 if strategy == "grid":
-                    if likelihood_type == "binned": 
-                        t_stats = generate_and_fit_toys_grid_2d(p_A, p_B, fix_A, fix_B, true_params, n_params, S_model, B_model, full_grid_points, cond_grid_points, n_toys, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func)
-                    else: 
-                        t_stats = generate_and_fit_toys_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, true_params, n_params, S_model, B_model, full_grid_points, cond_grid_points, n_toys, S_mc_pool, B_mc_pool, compute_rates_func, generate_toy_func)
+                    if likelihood_type == "binned":
+                        t_stats = generate_and_fit_toys_grid_2d(p_A, p_B, fix_A, fix_B, true_params, n_params, full_grid_points, cond_grid_points, n_toys, S_sumw2, B_sumw2, use_finite_mc_correction_binned, compute_rates_func)
+                    else:
+                        t_stats = generate_and_fit_toys_grid_unbinned_2d(p_A, p_B, fix_A, fix_B, true_params, n_params, pdf_components, full_grid_points, cond_grid_points, n_toys, S_mc_pool, B_mc_pool, compute_rates_func, generate_toy_func)
                 else:
-                    t_stats = generate_and_fit_toys_python(true_params, n_params, "2d", None, fix_A, fix_B, p_A, p_B, S_model, B_model, bounds_list, n_toys, strategy, num_cores, 0, likelihood_type, S_mc_pool, B_mc_pool, S_sigma2, B_sigma2, use_finite_mc_correction_binned, compute_rates_func, generate_toy_func)
-                
+                    t_stats = generate_and_fit_toys_python(true_params, n_params, "2d", None, fix_A, fix_B, p_A, p_B, bounds_list, n_toys, strategy, num_cores=num_cores, verbose=0, pdf_components=pdf_components, likelihood_type=likelihood_type, S_mc_pool=S_mc_pool, B_mc_pool=B_mc_pool, S_sumw2=S_sumw2, B_sumw2=B_sumw2, use_finite_mc=use_finite_mc_correction_binned, compute_rates_func=compute_rates_func, generate_toy_func=generate_toy_func, bounds_func=bounds_func, constraints=constraints, scipy_method=scipy_method, toy_batch_size=toy_batch_size, adaptive_toys=adaptive_toys, t_data=results[f"2d_t_data_{pair_name}"][i, j], alpha=adaptive_alpha)
+
                 t_stats.sort()
-                for c in cl: 
-                    results[f"2d_t_critical_{pair_name}"][c][i, j] = t_stats[min(int(c * n_toys), n_toys - 1)]
+                # Quantile index uses len(t_stats), not n_toys -- see the 1D
+                # loop's identical comment above.
+                n_generated = len(t_stats)
+                for c in cl:
+                    results[f"2d_t_critical_{pair_name}"][c][i, j] = t_stats[min(int(c * n_generated), n_generated - 1)]
 
             # --- Sparsification Array Tracing ---
             # To dramatically reduce computation time in 2D grids, this algorithm:
             # 1. Evaluates a coarse subset of grid nodes.
             # 2. Uses Bivariate Spline interpolation to estimate the t_critical surface.
-            # 3. Dynamically traces and evaluates only the specific high-resolution nodes 
+            # 3. Dynamically traces and evaluates only the specific high-resolution nodes
             #    where the condition (t_data <= t_critical) transitions state (the contour boundary).
+            #
+            # Known limitation (sparsify_grid=True, hence why it defaults to False):
+            # eval_2d_point's memoization is keyed off 2d_t_data, which is only ever
+            # set by an actual conditional fit -- so the refinement pass below
+            # genuinely re-evaluates boundary cells (this used to be a silent no-op
+            # when the guard was keyed off 2d_t_critical instead, which the coarse-
+            # to-fine interpolation below fills in for every cell regardless of
+            # whether it was really evaluated). However, boundary detection ("is
+            # this coarse cell adjacent to a rejected cell") and the resulting
+            # refinement halo are still only a single, non-iterative, 1-cell-wide
+            # ring around the ~5-per-axis coarse nodes. For grids much larger than
+            # roughly 20x20 per axis, that halo never reaches deep interior/exterior
+            # cells far from any coarse node: their 2d_t_data stays NaN and they are
+            # force-excluded from the accepted region regardless of their true
+            # status (NaN comparisons are always False). This under-counts the true
+            # accepted region at exactly the grid sizes this feature is meant for
+            # (see docs/dev/FIXES_BRIEF_dev-no-templates.md for a worked example).
+            # Making this reliable at scale needs an iterative refine loop and/or an
+            # interpolated (not NaN) t_data estimate to trace the true contour --
+            # tracked as follow-up work, not addressed here.
             if sparsify_grid:
                 step_A = max(1, len(gridA) // 5)
                 step_B = max(1, len(gridB) // 5)
@@ -700,23 +942,29 @@ if __name__ == "__main__":
     if config["likelihood_type"] == "binned":
         print(f"\n--- Running BINNED Analysis Example ({len(grids)}-Parameter) | Modes -> 1D: {config['compute_1D_intervals']} | 2D: {config['compute_2D_intervals']} ---")
         
+        # Fixed template arrays are referenced via module-level closure rather
+        # than passed in as compute_rates_func arguments (S_model/B_model no
+        # longer exist as a mechanism -- see the "BREAKING CHANGES" entry in
+        # CHANGELOG.md). Must be defined before the @njit function below so
+        # numba's global lookup resolves them.
+        S_template = np.array([0.1, 0.5, 2.0, 5.0])
+        B_template = np.array([15.0, 5.0, 1.0, 0.1])
+
         @njit(fastmath=True, nogil=True)
-        def example_compute_rates_binned(params, S_template, B_template, S_sigma2, B_sigma2):
+        def example_compute_rates_binned(params, S_sumw2, B_sumw2):
             """
-            Computes the expected binned rates and variances for a non-degenerate 
+            Computes the expected binned rates and variances for a non-degenerate
             3-parameter mock model.
-            
+
             Parameters:
             -----------
             params : array_like
                 params[0] = Signal strength multiplier
                 params[1] = Flat background offset (breaks degeneracy)
                 params[2] = Template background strength multiplier
-            S_template, B_template : array_like
-                Base expected counts for signal and template background.
-            S_sigma2, B_sigma2 : array_like
-                MC template variances.
-                
+            S_sumw2, B_sumw2 : array_like
+                Sum of squared MC weights (sumw2) per bin.
+
             Returns:
             --------
             mu : array_like
@@ -726,38 +974,38 @@ if __name__ == "__main__":
             """
             # Using independent linear contributions to break the params[0]*params[1] degeneracy
             mu = params[0] * S_template + params[1] + params[2] * B_template
-            
+
             # The flat background is treated as exact (0 variance) for this example
-            sigma2 = (params[0]**2) * S_sigma2 + (params[2]**2) * B_sigma2
+            sigma2 = (params[0]**2) * S_sumw2 + (params[2]**2) * B_sumw2
             return mu, sigma2
-            
-        S_template = np.array([0.1, 0.5, 2.0, 5.0])
-        B_template = np.array([15.0, 5.0, 1.0, 0.1])
-        
-        S_sigma2 = S_template.copy() 
-        B_sigma2 = B_template.copy()
-        
+
+        S_sumw2 = S_template.copy()
+        B_sumw2 = B_template.copy()
+
         np.random.seed(42)
         # Updated to inject 1.0 for all three parameters
         N_data_binned = np.random.poisson(1.0 * S_template + 1.0 + 1.0 * B_template)
         print(f"Mock Observed Data (Binned Counts): {N_data_binned}")
 
         fc_results, fc_fig = compute_fc_intervals(
-            N_data_binned, S_template, B_template, grids, 
+            data=N_data_binned, grids=grids,
             compute_rates_func=example_compute_rates_binned,
-            cl=config["cl"], n_toys=config["n_toys"], strategy=config["strategy"], 
+            cl=config["cl"], n_toys=config["n_toys"], strategy=config["strategy"],
             num_cores=config["num_cores"], verbose=config["verbose"],
             adaptive_toys=config["adaptive_toys"], toy_batch_size=config["toy_batch_size"],
             sparsify_grid=config["sparsify_grid"], warm_start=config["warm_start"],
             likelihood_type="binned",
             output_file=config["output_file"], save_log=config["save_log"], save_directory=config["save_directory"],
             use_finite_mc_correction_binned=config["use_finite_mc_correction_binned"],
-            S_sigma2=S_sigma2, B_sigma2=B_sigma2,
+            S_sumw2=S_sumw2, B_sumw2=B_sumw2,
             compute_1D_intervals=config["compute_1D_intervals"],
             compute_2D_intervals=config["compute_2D_intervals"],
             param_names=config["param_names"],
             smooth_1d=config["smooth_1d"],
-            smooth_2d=config["smooth_2d"]
+            smooth_2d=config["smooth_2d"],
+            scipy_method=config.get("scipy_method"),
+            n_restarts=config.get("n_restarts", 1),
+            neighbor_seeding=config.get("neighbor_seeding", True)
         )
 
     elif config["likelihood_type"] == "unbinned":
@@ -767,19 +1015,20 @@ if __name__ == "__main__":
         def s_pdf_mock(x): return norm.pdf(x, loc=5.0, scale=1.0)
         def b_pdf_mock(x): return expon.pdf(x, scale=2.0)
         
-        def example_compute_rates_unbinned(params, s_probs, b_probs):
+        def example_compute_rates_unbinned(params, probs):
             """
             Computes total expected events and pointwise likelihood probabilities.
-            
+
             Parameters:
             -----------
             params : array_like
                 params[0] = Signal strength multiplier
                 params[1] = Flat background strength (breaks degeneracy)
                 params[2] = Template background strength
-            s_probs, b_probs : array_like
-                Evaluated PDF probabilities for each event.
-                
+            probs : list of array_like
+                Pre-evaluated PDF probabilities for each event, one entry per
+                `pdf_components[i]` (here: [s_pdf_mock, b_pdf_mock]).
+
             Returns:
             --------
             expected_total : float
@@ -787,11 +1036,12 @@ if __name__ == "__main__":
             p_events : array_like
                 Un-normalized likelihood densities evaluated for each event.
             """
+            s_probs, b_probs = probs[0], probs[1]
             expected_total = params[0] + params[1] + params[2]
-            
+
             if len(s_probs) == 0 and len(b_probs) == 0:
                 return expected_total, np.array([])
-                
+
             # Assume the flat background is distributed uniformly between 0 and 10 (PDF = 0.1)
             p_events = params[0] * s_probs + params[1] * 0.1 + params[2] * b_probs
             return expected_total, p_events
@@ -841,11 +1091,11 @@ if __name__ == "__main__":
         print(f"Mock Observed Unbinned Events: {np.round(unbinned_data, 2)}")
         
         fc_results, fc_fig = compute_fc_intervals(
-            unbinned_data, s_pdf_mock, b_pdf_mock, 
-            grids, 
+            data=unbinned_data, grids=grids,
             compute_rates_func=example_compute_rates_unbinned,
             generate_toy_func=example_generate_unbinned_toy,
-            cl=config["cl"], n_toys=config["n_toys"], strategy=config["strategy"], 
+            pdf_components=[s_pdf_mock, b_pdf_mock],
+            cl=config["cl"], n_toys=config["n_toys"], strategy=config["strategy"],
             num_cores=config["num_cores"], verbose=config["verbose"],
             adaptive_toys=config["adaptive_toys"], toy_batch_size=config["toy_batch_size"],
             sparsify_grid=config["sparsify_grid"], warm_start=config["warm_start"],
@@ -855,5 +1105,8 @@ if __name__ == "__main__":
             compute_2D_intervals=config["compute_2D_intervals"],
             param_names=config["param_names"],
             smooth_1d=config["smooth_1d"],
-            smooth_2d=config["smooth_2d"]
+            smooth_2d=config["smooth_2d"],
+            scipy_method=config.get("scipy_method"),
+            n_restarts=config.get("n_restarts", 1),
+            neighbor_seeding=config.get("neighbor_seeding", True)
         )

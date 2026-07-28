@@ -1,0 +1,31 @@
+name: Changelog Sync Check
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "CHANGELOG.md"
+      - "docs/source/changelog.rst"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "CHANGELOG.md"
+      - "docs/source/changelog.rst"
+
+jobs:
+  check-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Check CHANGELOG.md / docs/source/changelog.rst structural sync
+        # See scripts/check_changelog_sync.py's module docstring for exactly
+        # what this does and doesn't check. It never auto-fixes -- a failure
+        # here means a human must reconcile the two files by hand.
+        run: python scripts/check_changelog_sync.py

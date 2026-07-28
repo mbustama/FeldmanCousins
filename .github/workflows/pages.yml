@@ -33,8 +33,7 @@ jobs:
 
       - name: Install package and doc dependencies
         run: |
-          pip install -e .
-          pip install sphinx sphinx-rtd-theme sphinxcontrib-bibtex
+          pip install -e ".[docs]"
 
       - name: Build HTML documentation
         run: |

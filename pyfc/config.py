@@ -10,7 +10,8 @@ While this file does not execute the mathematical routines, it defines the
 statistical, algorithmic, and computational parameters that govern the 
 underlying profile likelihood ratio tests and Monte Carlo toy generation.
 
-Date: July 24, 2026
+Created: v0.1.0 (July 24, 2026)
+Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 
@@ -65,7 +66,10 @@ def generate_sample_config(filename="../config/example_fc_config.json"):
         "compute_2D_intervals": True,
         "param_names": ["param1", "param2", "param3"],
         "smooth_1d": True,
-        "smooth_2d": True
+        "smooth_2d": True,
+        "scipy_method": None,
+        "n_restarts": 1,
+        "neighbor_seeding": True
     }
     with open(filename, 'w') as f:
         json.dump(default_config, f, indent=4)
@@ -109,6 +113,7 @@ def parse_arguments():
     parser.add_argument('--cl', type=float, nargs='+', help="Confidence level(s) (e.g., 0.90 0.95)", default=argparse.SUPPRESS)
     parser.add_argument('--n_toys', type=int, default=argparse.SUPPRESS)
     parser.add_argument('--strategy', type=str, choices=["grid", "scipy", "ultranest", "hybrid"], default=argparse.SUPPRESS)
+    parser.add_argument('--scipy_method', type=str, choices=["L-BFGS-B", "SLSQP", "trust-constr"], help="Override scipy.optimize.minimize's method (default: L-BFGS-B, or SLSQP automatically when constraints are supplied programmatically)", default=argparse.SUPPRESS)
     parser.add_argument('--num_cores', type=int, default=argparse.SUPPRESS)
     parser.add_argument('--verbose', type=int, default=argparse.SUPPRESS)
     parser.add_argument('--adaptive_toys', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
@@ -124,7 +129,9 @@ def parse_arguments():
     parser.add_argument('--param_names', type=str, nargs='+', default=argparse.SUPPRESS)
     parser.add_argument('--smooth_1d', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
     parser.add_argument('--smooth_2d', type=lambda x: str(x).lower() in ['true', '1', 'yes'], default=argparse.SUPPRESS)
-    
+    parser.add_argument('--n_restarts', type=int, help="Number of distinct starting points to try per DATA fit (scipy strategy), keeping whichever converges to the lowest NLL", default=argparse.SUPPRESS)
+    parser.add_argument('--neighbor_seeding', type=lambda x: str(x).lower() in ['true', '1', 'yes'], help="Seed each DATA fit (scipy strategy) from an adjacent grid point's profiled parameters instead of always starting from the bounds midpoint", default=argparse.SUPPRESS)
+
     args = parser.parse_args()
     
     if args.generate_config:
@@ -151,7 +158,10 @@ def parse_arguments():
         "compute_2D_intervals": True,
         "param_names": ["param1", "param2", "param3"],
         "smooth_1d": True,
-        "smooth_2d": True
+        "smooth_2d": True,
+        "scipy_method": None,
+        "n_restarts": 1,
+        "neighbor_seeding": True
     }
     
     if hasattr(args, 'config_file'):
