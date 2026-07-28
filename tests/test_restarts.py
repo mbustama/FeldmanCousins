@@ -152,7 +152,7 @@ def _simple_2param_rate_func(params, S_sumw2, B_sumw2):
     return mu, S_sumw2
 
 
-def test_orchestrator_neighbor_seeding_passes_previous_point_as_seed():
+def test_orchestrator_neighbor_seeding_passes_previous_point_as_seed(tmp_path):
     """
     Phase 1's data-fit loop should call conditional_fit_1d_scipy with
     seed=None for the first grid point (i=0), then seed=<previous point's
@@ -186,7 +186,7 @@ def test_orchestrator_neighbor_seeding_passes_previous_point_as_seed():
             cl=[0.90], n_toys=1, strategy="scipy", num_cores=1, verbose=0,
             sparsify_grid=False, warm_start=False,
             likelihood_type="binned", S_sumw2=s2, B_sumw2=s2,
-            output_file=None, save_directory="/tmp/pyfc_test_neighbor_seed_1d",
+            output_file=None, save_directory=str(tmp_path / "pyfc_test_neighbor_seed_1d"),
             compute_1D_intervals=True, compute_2D_intervals=False,
         )
 
@@ -199,7 +199,7 @@ def test_orchestrator_neighbor_seeding_passes_previous_point_as_seed():
             assert c["n_restarts"] == 2  # forced up to >= 2 when a neighbor seed is used
 
 
-def test_orchestrator_neighbor_seeding_disabled_via_flag():
+def test_orchestrator_neighbor_seeding_disabled_via_flag(tmp_path):
     """neighbor_seeding=False must restore the pre-FIX-4 behavior: always seed=None."""
     calls = []
 
@@ -230,7 +230,7 @@ def test_orchestrator_neighbor_seeding_disabled_via_flag():
             cl=[0.90], n_toys=1, strategy="scipy", num_cores=1, verbose=0,
             sparsify_grid=False, warm_start=False,
             likelihood_type="binned", S_sumw2=s2, B_sumw2=s2,
-            output_file=None, save_directory="/tmp/pyfc_test_neighbor_seed_disabled",
+            output_file=None, save_directory=str(tmp_path / "pyfc_test_neighbor_seed_disabled"),
             compute_1D_intervals=True, compute_2D_intervals=False,
             neighbor_seeding=False,
         )
@@ -242,7 +242,7 @@ def test_orchestrator_neighbor_seeding_disabled_via_flag():
 
 # --- End-to-end: with vs without neighbor warm-starting, checking for
 # plateaus/non-monotonic jumps and comparing wall-clock (loose, informational) ---
-def test_end_to_end_with_and_without_neighbor_seeding_no_plateau_or_regression():
+def test_end_to_end_with_and_without_neighbor_seeding_no_plateau_or_regression(tmp_path):
     S_template = np.array([0.1, 0.5, 2.0, 5.0])
     B_template = np.array([15.0, 5.0, 1.0, 0.1])
     s2_S = np.zeros_like(S_template)
@@ -265,7 +265,7 @@ def test_end_to_end_with_and_without_neighbor_seeding_no_plateau_or_regression()
             cl=[0.90], n_toys=10, strategy="scipy", num_cores=1, verbose=0,
             sparsify_grid=False, warm_start=False,
             likelihood_type="binned", S_sumw2=s2_S, B_sumw2=s2_B,
-            output_file=None, save_directory=f"/tmp/pyfc_test_e2e_{neighbor_seeding}",
+            output_file=None, save_directory=str(tmp_path / f"pyfc_test_e2e_{neighbor_seeding}"),
             compute_1D_intervals=True, compute_2D_intervals=False,
             neighbor_seeding=neighbor_seeding,
         )
