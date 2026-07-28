@@ -62,9 +62,12 @@ def generate_corner_plot(results, config):
 
     Returns:
     --------
-    None
-        The figure is saved to disk as `fc_corner_plot.pdf` and the matplotlib 
-        environment is closed to free memory.
+    fig : matplotlib.figure.Figure, or None
+        The generated figure, also saved to disk as `fc_corner_plot.pdf`.
+        The caller owns the returned figure and is responsible for closing
+        it (e.g. `plt.close(fig)`) if generating many plots in a loop --
+        this function does not close it itself. Returns None instead if
+        matplotlib isn't installed (`MATPLOTLIB_AVAILABLE` is False).
     """
     if not MATPLOTLIB_AVAILABLE:
         return

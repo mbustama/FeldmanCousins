@@ -3,7 +3,7 @@ Outputs & Checkpointing
 
 The Checkpoint Engine
 ---------------------
-Feldman-Cousins calculations are highly resource-intensive and often run on shared HPC clusters subject to preemption limits. If your script is interrupted, simply run it again. PyFC will detect the ``checkpoint_fc.npz`` file, verify that your parameter grids match exactly, and seamlessly resume toy generation from the point of interruption.
+Feldman-Cousins calculations are highly resource-intensive and often run on shared HPC clusters subject to preemption limits. If your script is interrupted, simply run it again. PyFC will detect the ``checkpoint_fc.npz`` file, verify that your parameter grids match exactly, and resume from the last completed checkpoint -- **not** from the exact grid point of interruption: checkpoints are written after each full 1D parameter scan and each full 2D pair scan completes, so an interruption mid-scan re-does that one in-progress parameter/pair, not the whole run.
 
 .. warning::
    **Critical Restart Warning**: While PyFC verifies your grid dimensions on restart, it does *not* rigorously verify hyperparameter modifications. If you abort a run and alter settings like ``strategy``, ``likelihood_type``, or ``n_toys``, you **must** manually delete the ``checkpoint_fc.npz`` file before running again. Otherwise, the system will permanently merge structurally corrupted pseudo-experiment p-values into your finalized thresholds.

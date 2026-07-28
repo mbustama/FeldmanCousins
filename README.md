@@ -212,10 +212,10 @@ Once PyFC is installed via `pip`, the package modules become available globally 
 python -m pyfc.generate_config
 ```
 
-The script will prompt you with questions regarding your likelihood type, number of toys, parallelization preferences, and smoothing options. It validates your inputs and writes a file (by default, `fc_config.json`) to your current working directory. Its default choices for each question match `compute_fc_intervals`'s own documented defaults (below) -- press Enter on every question to reproduce them exactly.
+The script will prompt you with questions regarding your likelihood type, number of toys, parallelization preferences, and smoothing options. It validates your inputs and writes a file (by default, `fc_config.json`) to your current working directory. Its default choices for each question match `compute_fc_intervals`'s own documented defaults (below) -- press Enter on every question to reproduce them, with three deliberate exceptions: `num_cores`, `output_file`, and `param_names` all *actually* default to `null` (auto-detect every hardware thread, skip writing a results file, and auto-generate `param{i}` names matching your model's real parameter count, respectively) rather than the illustrative literal values (`8`, `"fc_results"`, `["param1", "param2", "param3"]`) shown for them in the JSON block below -- see each parameter's own docstring on `compute_fc_intervals` for why a concrete example wouldn't generalize.
 
 **Example `fc_config.json` Default Values:**
-*(Note: If you omit passing a configuration dictionary to the orchestrator, the framework relies on these embedded fallback defaults).*
+*(Note: This is a fully-populated example, not a literal dump of `compute_fc_intervals`'s embedded fallback defaults -- `num_cores`/`output_file`/`param_names` are shown here with concrete illustrative values, but actually default to `null`/auto-detecting behavior when omitted; see the exception noted above.)*
 
 ```json
 {
@@ -581,7 +581,7 @@ where $N_{\text{expected}}$ is the integral of the total rate, and $\lambda(x_j)
 ### The Checkpoint Engine (`warm_start`)
 Feldman-Cousins calculations are highly resource-intensive and often run on shared HPC clusters subject to preemption limits (e.g., Slurm time limits). By default, `warm_start` is set to `True`. PyFC dynamically writes its state to `checkpoint_fc.npz` inside your `save_directory` (default: `output/example_fc_output/`) after processing each 1D slice of the parameters of interest. 
 
-If your script is interrupted, simply run it again. PyFC will detect the `checkpoint_fc.npz` file, rigorously verify that your newly requested parameter grids match the saved geometry exactly, and seamlessly resume toy generation from the exact point of interruption.
+If your script is interrupted, simply run it again. PyFC will detect the `checkpoint_fc.npz` file, rigorously verify that your newly requested parameter grids match the saved geometry exactly, and resume from the last completed checkpoint -- **not** from the exact grid point of interruption: checkpoints are written after each full 1D parameter scan and each full 2D pair scan completes (see `_save_fc_archive`'s call sites in `orchestrator.py`), so an interruption mid-scan re-does that one in-progress parameter/pair, not the whole run.
 
 **Critical Restart Warning:** While PyFC verifies your grid dimensions on restart, it does *not* rigorously verify hyperparameter modifications. If you abort a run and alter settings like `strategy`, `likelihood_type`, or `n_toys`, you **must** manually delete the `checkpoint_fc.npz` file before running again, otherwise, the system will permanently merge structurally corrupted pseudo-experiment p-values into your finalized thresholds. *(Note: Manual deletion is only necessary for aborted or preempted runs; successfully completed runs automatically clean up their checkpoint files).*
 
