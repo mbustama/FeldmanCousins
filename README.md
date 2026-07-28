@@ -594,10 +594,16 @@ Upon successful completion, the pipeline outputs final structures directly to yo
 
 | Key | Description | Shape |
 | :--- | :--- | :--- |
+| `best_fit` | Global unconditional MLE parameter vector -- the same point used as the numerator of every PLR test statistic. Also the two scalars called out above as "required for cross-model ratio comparisons". | `(n_params,)` |
+| `data_uncond_nll` | Global unconditional NLL at `best_fit`, evaluated on the real data. | scalar |
 | `grid_p{i}` | 1D parameter space meshgrid evaluating parameter `i`. | `(N,)` |
+| `1d_test_p{i}` | Duplicate of `grid_p{i}` (identical array, stored under both keys). | `(N,)` |
 | `1d_t_data_p{i}` | 1D PLR test statistic evaluated on the real data. | `(N,)` |
+| `1d_prof_params_p{i}` | Full profiled parameter vector (all `n_params` coordinates, not just `p{i}`) at each 1D scan point. | `(N, n_params)` |
 | `1d_t_critical_p{i}_{cl}` | 1D Interpolated MC threshold surface limits. | `(N,)` |
 | `1d_accepted_p{i}_{cl}` | 1D boolean limits profiling other parameters. | `(N,)` |
+| `2d_test_p{i}_p{i}p{j}` | 1D grid for parameter `i` as scanned in the `(i, j)` pair (duplicate of `grid_p{i}`). | `(N,)` |
+| `2d_test_p{j}_p{i}p{j}` | 1D grid for parameter `j` as scanned in the `(i, j)` pair (duplicate of `grid_p{j}`). | `(M,)` |
 | `2d_t_data_p{i}p{j}` | 2D PLR test statistic evaluating a joint region. | `(N, M)` |
 | `2d_t_critical_p{i}p{j}_{cl}` | 2D threshold surfaces for the combination. | `(N, M)` |
 | `2d_accepted_p{i}p{j}_{cl}` | 2D boolean masks (True = inside contour). | `(N, M)` |
