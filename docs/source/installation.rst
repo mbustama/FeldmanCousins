@@ -117,18 +117,23 @@ The project structure is organized modularly to separate analytical likelihood m
    ├── scripts/
    │   └── check_changelog_sync.py      # Structural sync checker for CHANGELOG.md <-> changelog.rst
    ├── tests/                           # Unit and integration test suite
-   │   ├── test_bounds_func.py          # Tests for the bounds_func parameter-dependent bounds mechanism
-   │   ├── test_constraints.py          # Tests for scipy/UltraNest LinearConstraint/NonlinearConstraint support
-   │   ├── test_core.py                 # Core installation and import tests, including checks for optional dependencies
-   │   ├── test_io.py                   # Tests for File I/O and intermediate .npz checkpoint recovery mechanisms
-   │   ├── test_multiprocessing.py      # Tests for unbinned execution and multi-processing concurrency using ProcessPoolExecutor
-   │   ├── test_nd_binned.py            # Tests for N-dimensional binned data (flatten-invariance, 2D histogram smoke test)
-   │   ├── test_numba_compilation.py    # Tests to ensure Numba JIT compilation executes correctly on the host architecture
-   │   ├── test_optimizers.py           # Tests for continuous optimization routines, including SciPy boundary clamping
-   │   ├── test_pdf_components.py       # Tests for the pdf_components mechanism (2- and 3+-component correctness)
-   │   ├── test_restarts.py             # Tests for optimizer restarts, neighbor warm-starting, and res.success handling
-   │   ├── test_smoothing.py            # Tests for the smoothed unphysical-rate NLL penalty
-   │   └── test_statistics.py           # Tests for statistical correctness, likelihood behavior, and Asimov treatment convergence
+   │   ├── test_adaptive_toys.py                # Tests for the validated adaptive_toys/toy_batch_size early-stopping behavior
+   │   ├── test_bounds_func.py                  # Tests for the bounds_func parameter-dependent bounds mechanism
+   │   ├── test_constraints.py                  # Tests for scipy/UltraNest LinearConstraint/NonlinearConstraint support
+   │   ├── test_core.py                         # Core installation and import tests, including checks for optional dependencies
+   │   ├── test_disconnected_intervals.py       # Tests for the contiguous-run helper and disconnected 1D interval reporting
+   │   ├── test_finite_mc_likelihood.py         # Hand-computed-reference tests for the finite-MC likelihood formula
+   │   ├── test_io.py                           # Tests for File I/O and intermediate .npz checkpoint recovery mechanisms
+   │   ├── test_multiprocessing.py              # Tests for unbinned execution and multi-processing concurrency using ProcessPoolExecutor
+   │   ├── test_nd_binned.py                    # Tests for N-dimensional binned data (flatten-invariance, 2D histogram smoke test)
+   │   ├── test_numba_compilation.py            # Tests to ensure Numba JIT compilation executes correctly on the host architecture
+   │   ├── test_optimizers.py                   # Tests for continuous optimization routines, including SciPy boundary clamping
+   │   ├── test_pdf_components.py               # Tests for the pdf_components mechanism (2- and 3+-component correctness)
+   │   ├── test_restarts.py                     # Tests for optimizer restarts, neighbor warm-starting, and res.success handling
+   │   ├── test_smoothing.py                    # Tests for the smoothed unphysical-rate NLL penalty
+   │   ├── test_sparsify_grid.py                # Regression tests for the sparsify_grid boundary-refinement guard fix
+   │   ├── test_statistics.py                   # Tests for statistical correctness, likelihood behavior, and Asimov treatment convergence
+   │   └── test_ultranest_retry.py              # Tests for the UltraNest internal-bug retry wrapper
    ├── xbranch_compare/                 # Cross-branch (dev vs dev-no-templates) regression harness
    │   ├── comparator.py                # Recursive .npz diff (shape + NaN-mask + tolerant allclose)
    │   ├── compare_results.py           # Diffs the cross-branch scenario .npz outputs
