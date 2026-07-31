@@ -189,7 +189,8 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── test_toy_pool_fallback.py                    # Tests for the toy pool's ProcessPoolExecutor -> ThreadPoolExecutor recovery on unpicklable callables
    │   ├── test_ultranest_retry.py                      # Tests for the UltraNest internal-bug retry wrapper
    │   ├── test_unbinned_grid.py                        # Tests for the unbinned grid-search path, against brute-force oracles and the PLR invariants
-   │   └── test_unbinned_toys.py                        # Tests for the unbinned toy-generation/fitting pipeline via a real ProcessPoolExecutor
+   │   ├── test_unbinned_toys.py                        # Tests for the unbinned toy-generation/fitting pipeline via a real ProcessPoolExecutor
+   │   └── test_version.py                              # Tests that the version is written down once and reaches package and docs from there
    ├── xbranch_compare/                 # Cross-branch (dev vs dev-no-templates) regression harness
    │   ├── comparator.py                # Recursive .npz diff (shape + NaN-mask + tolerant allclose)
    │   ├── compare_results.py           # Diffs the cross-branch scenario .npz outputs

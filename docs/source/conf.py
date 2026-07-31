@@ -16,25 +16,20 @@ project = 'PyFC'
 copyright = '2026, Mauricio Bustamante'
 author = 'Mauricio Bustamante'
 
-# Read the version from the installed distribution rather than hardcoding it here.
-# This was hardcoded, and it went stale: it still said '0.1.0' while the package was at
-# 0.10.0, so every page of the published documentation carried a version nine releases
-# out of date. A second copy of a number that must match `pyproject.toml` will eventually
-# disagree with it, and nothing about a docs build fails when it does.
+# Take the version from the package rather than hardcoding it here. This was a literal,
+# and it went stale: it still said '0.1.0' while the package was at 0.10.0, so every page
+# of the published documentation carried a version nine releases out of date, and nothing
+# about a docs build fails when that happens.
 #
-# Note the argument is the DISTRIBUTION name (`PyFeldmanCousins`), not the import package
-# (`pyfc`); asking for the wrong one raises PackageNotFoundError and would silently pin
-# the docs at the fallback below. Both CI (`pages.yml` runs `pip install -e ".[docs]"`)
-# and the documented local workflow install the package first, so the fallback should only
-# ever be seen when building docs from an uninstalled checkout -- in which case a visibly
-# wrong version is the correct outcome, rather than a plausible but invented one.
-from importlib.metadata import PackageNotFoundError  # noqa: E402
-from importlib.metadata import version as _distribution_version  # noqa: E402
+# `pyfc.__version__` reads the installed distribution's metadata, so `pyproject.toml`
+# remains the one place the number is written down. Importing it here rather than repeating
+# the `importlib.metadata` lookup keeps that to a single implementation -- two copies of
+# the lookup would be two places to get the distribution-vs-import name distinction wrong.
+#
+# autodoc has to import `pyfc` anyway to read docstrings, so this adds no new requirement:
+# a build where this import fails was never going to produce API documentation.
+from pyfc import __version__ as release  # noqa: E402
 
-try:
-    release = _distribution_version('PyFeldmanCousins')
-except PackageNotFoundError:
-    release = '0.0.0+unknown'
 version = release
 
 # -- General configuration ---------------------------------------------------

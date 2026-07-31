@@ -35,6 +35,34 @@ parameter lines up across all four places it is written down. Every new test in
 this release was verified to fail against a deliberately broken version of the
 code before being kept.
 
+.. warning::
+   **Upgrading from 0.10.0 -- one manual cleanup step.**
+
+   0.10.0, the version currently on PyPI, installed ``tests``, ``scripts``,
+   ``docs`` and ``xbranch_compare`` into ``site-packages`` as top-level
+   packages (see the packaging entry under *Fixed*). 0.20.0 installs only
+   ``pyfc``, but **upgrading does not fully undo the damage, and neither does**
+   ``pip uninstall``. Measured on a clean virtualenv: pip removes the files it
+   recorded and prunes three of the four directories, but leaves an empty
+   ``docs/`` behind -- and an empty directory is still an importable namespace
+   package, so ``import docs`` in that environment continues to resolve into
+   ``site-packages`` and can shadow a real ``docs`` package belonging to
+   another project.
+
+   To check whether an environment is affected:
+
+   .. code-block:: bash
+
+      python -c "import docs; print(docs.__path__)"
+
+   If that succeeds and points into ``site-packages`` with nothing underneath,
+   the directory is PyFC's leftover and is safe to delete. If it points
+   anywhere else, or contains files, it belongs to something else -- leave it
+   alone.
+
+   Environments that never installed 0.10.0 are unaffected, and nothing inside
+   PyFC itself depends on these names.
+
 Added
 ~~~~~
 * **Test-coverage measurement.** ``pytest-cov`` joins the ``test`` and ``dev``
@@ -144,6 +172,18 @@ Added
      tests. ``requires-python`` is still ``>=3.8``; narrowing it, or making the
      fallback non-blocking, is a deliberate decision that has not been taken
      here.
+
+* **``pyfc.__version__``**, read from the installed distribution's metadata
+  rather than written down a second time. ``pyproject.toml`` is the single
+  source: the package exposes it, and ``docs/source/conf.py`` imports that value
+  instead of repeating the ``importlib.metadata`` lookup, so there is one
+  implementation and one place where the distribution-vs-import name distinction
+  can be got wrong. ``tests/test_version.py`` pins the whole chain -- that the
+  attribute exists and is exported, that it is not the uninstalled fallback,
+  that it agrees with ``pyproject.toml``, that the docs take their version from
+  the package, and that no module's hand-maintained ``Last modified:`` marker
+  claims to be newer than the release. All five links fail silently when broken,
+  which is how the docs came to advertise 0.1.0 for nine releases.
 
 Changed
 ~~~~~~~
