@@ -186,6 +186,7 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── test_smoothing.py                            # Tests for the smoothed unphysical-rate NLL penalty, including NaN handling
    │   ├── test_sparsify_grid.py                        # Regression tests for the sparsify_grid boundary-refinement guard fix
    │   ├── test_statistics.py                           # Tests for statistical correctness, likelihood behavior, and Asimov treatment convergence
+   │   ├── test_toy_pool_fallback.py                    # Tests for the toy pool's ProcessPoolExecutor -> ThreadPoolExecutor recovery on unpicklable callables
    │   ├── test_ultranest_retry.py                      # Tests for the UltraNest internal-bug retry wrapper
    │   ├── test_unbinned_grid.py                        # Tests for the unbinned grid-search path, against brute-force oracles and the PLR invariants
    │   └── test_unbinned_toys.py                        # Tests for the unbinned toy-generation/fitting pipeline via a real ProcessPoolExecutor

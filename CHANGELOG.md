@@ -94,6 +94,16 @@ All notable changes to PyFC are documented in this file.
   tested since v0.10.0: the NaN per-event-density rejection and the quadratic
   barrier for unphysical densities. Takes `unbinned.py` from 34% to 100%; all
   13 mutations tried against these tests were detected.
+- **Tests for the toy pool's `ThreadPoolExecutor` fallback**
+  (`tests/test_toy_pool_fallback.py`). The unbinned toy path dispatches each toy
+  to a separate process, which imposes a requirement users are never told about
+  at the call site: every callable they pass must be picklable, and a lambda or
+  a closure is not. `toys.py` already recovers from that by warning and retrying
+  the batch on threads, but nothing exercised the recovery, since it only runs
+  once the pool has already failed. Both halves of its contract are now covered:
+  that unpicklable closures still yield a complete set of test statistics, and
+  that a genuine bug in user code surfaces *uncaught* on the thread retry rather
+  than being converted into a warning plus a plausible-looking array of numbers.
 
 ### Changed
 
