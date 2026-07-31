@@ -44,6 +44,15 @@ pyfc-config = "pyfc.generate_config:main"
 [tool.setuptools.packages.find]
 where = ["."]
 
+# Without this filter, setuptools treats every top-level directory in the repository as a
+# package to install.  The 0.10.0 wheel shipped `tests`, `scripts`, `docs` and
+# `xbranch_compare` as top-level packages, so `pip install PyFeldmanCousins` dropped a
+# top-level `tests` module into the user's site-packages, where it shadows or is shadowed
+# by any other project's `tests` -- a genuine, hard-to-diagnose collision that has nothing
+# to do with this package's purpose.  `pyfc*` also admits future subpackages
+# (`pyfc.something`) without needing to be revisited.
+include = ["pyfc*"]
+
 [tool.coverage.run]
 # `pyfc` is the import package; `PyFeldmanCousins` is only the distribution name, and
 # coverage measures imported source.  Naming it explicitly also keeps the measurement
@@ -59,6 +68,7 @@ source = ["pyfc"]
 # as covered the moment the function runs at all; only branch coverage reports whether the
 # other side was ever exercised.
 branch = true
+
 
 [tool.coverage.report]
 show_missing = true
