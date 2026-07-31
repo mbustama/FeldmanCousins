@@ -3,16 +3,33 @@
 PyFC: A Python Framework for Feldman-Cousins Confidence Intervals
 =================================================================
 
-.. image:: https://img.shields.io/badge/License-GPLv3-blue.svg
+.. image:: https://github.com/mbustama/FeldmanCousins/actions/workflows/pytest.yml/badge.svg
+   :target: https://github.com/mbustama/FeldmanCousins/actions/workflows/pytest.yml
+   :alt: CI Tests
+
+.. image:: https://github.com/mbustama/FeldmanCousins/actions/workflows/lint.yml/badge.svg
+   :target: https://github.com/mbustama/FeldmanCousins/actions/workflows/lint.yml
+   :alt: Code Quality
+
+.. image:: https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg
+   :target: https://mbustama.github.io/FeldmanCousins/
+   :alt: Documentation
+
+.. image:: https://img.shields.io/pypi/v/PyFeldmanCousins.svg
+   :target: https://pypi.org/project/PyFeldmanCousins/
+   :alt: PyPI
+
+.. image:: https://img.shields.io/badge/License-GPLv3+-blue.svg
    :target: https://www.gnu.org/licenses/gpl-3.0
-   :alt: License: GPL v3
+   :alt: License: GPL v3+
 
 .. image:: https://img.shields.io/badge/python-3.8+-blue.svg
+   :target: https://www.python.org/downloads/
    :alt: Python 3.8+
 
-.. image:: https://github.com/mbustama/FeldmanCousins/actions/workflows/pytest.yml/badge.svg
-   :target: https://github.com/mbustama/FeldmanCousins/actions
-   :alt: CI Tests
+.. image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
+   :target: https://github.com/astral-sh/ruff
+   :alt: Code style: ruff
 
 .. important::
    **Important Links:**
