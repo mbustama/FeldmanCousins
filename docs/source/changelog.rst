@@ -171,6 +171,40 @@ Fixed
   ``multiprocessing`` alone (a different blind spot, not a smaller one), 70%
   with both. No new test was written to produce any of that; the lines were
   always running.
+* **``pyfc-config`` no longer spins forever when input runs out.**
+  ``get_input``'s catch-all ``except Exception`` swallowed the ``EOFError`` that
+  ``input()`` raises on a closed or exhausted stdin, and ``while True`` retried
+  immediately. Since stdin stays at EOF the retry fails identically with no
+  delay, so the loop span at full CPU re-printing its prompt: ~7.4 million
+  iterations in 5 seconds, and one such process was found still running after
+  nearly three hours. That made the wizard unusable anywhere without a terminal
+  -- CI, cron, a container, or behind a pipe whose input ran out -- and
+  ``yes "" | pyfc-config`` hid it completely, because ``yes`` never stops. EOF
+  is now caught ahead of the catch-all and ends the run with exit status 1,
+  naming the question that ran out, which is the useful detail when a script
+  piped too few answers. It is deliberately *not* treated as "accept the
+  default": that would write a configuration the user never saw, and a wizard
+  that invents answers when nobody is listening fails more quietly than one
+  that spins.
+* **The toy pool's fallback no longer deadlocks on Python 3.9.** When the
+  ``ProcessPoolExecutor`` broke, the ``with`` block called
+  ``shutdown(wait=True)`` on the way out -- waiting on exactly the workers that
+  were wedged, rather than falling through to the ``ThreadPoolExecutor`` retry a
+  few lines below. On 3.9 that never returned: a CI run sat for two hours before
+  being cancelled, with orphaned workers reported at cleanup, while 3.10 and
+  3.11 passed in minutes. The pool's lifetime is now managed explicitly and the
+  two exits differ: the success path still waits, since those results are the
+  return value, while the failure path abandons the pool with
+  ``shutdown(wait=False)``. Verified against a real 3.9 + Numba environment,
+  where the reproduction went from a 120-second timeout to passing in 0.95 s;
+  ``tests/test_toy_pool_fallback.py`` is no longer skipped below 3.10.
+
+  .. note::
+     The failure mode was a hang rather than a red test, and it required the
+     full pytest context -- neither a stdlib reduction of the same
+     ``try``/``with``/``map``/``except`` shape nor a standalone script calling
+     the same code path reproduces it -- so what actually guards against a
+     regression is the ``timeout-minutes`` now set on the CI matrix job.
 
 0.10.0
 ------

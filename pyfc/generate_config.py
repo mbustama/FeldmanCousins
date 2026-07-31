@@ -40,6 +40,7 @@ https://github.com/mbustama/FeldmanCousins, which exists under a GNU GPL v3 Lice
 
 import json
 import os
+import sys
 
 
 def parse_bool(value):
@@ -182,8 +183,32 @@ def get_input(prompt_text, default_val, cast_func, choices=None, validator=None,
             print() # Empty line for readability
             return parsed_val
 
+        except EOFError:
+            # `input()` raises this when stdin is closed or exhausted: `< /dev/null`,
+            # Ctrl-D, a pipe whose contents ran out, or any non-interactive context
+            # (CI, cron, a container without a TTY).
+            #
+            # This branch MUST come before the bare `except Exception` below, which
+            # would otherwise swallow it and let `while True` retry immediately and
+            # forever. That is not a hypothetical: stdin stays at EOF, so `input()`
+            # raises again with no delay, and the loop spins at full CPU printing the
+            # prompt -- measured at ~7.4 million iterations in 5 seconds, and observed
+            # once running for nearly three hours before being killed by hand.
+            #
+            # Unlike every other error here there is nothing to retry: no further input
+            # can arrive, and silently accepting `default_val` would write a config the
+            # user never actually approved. So report and stop.
+            print(
+                f"\n  -> Error: reached end of input while waiting for '{prompt_text}'.\n"
+                "     pyfc-config is an interactive wizard and needs a terminal.\n"
+                "     To script it, pipe one line per question (and note that a pipe\n"
+                "     with too few lines ends up here).",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
         except ValueError as e:
-            # Handle specific type-casting errors 
+            # Handle specific type-casting errors
             err_str = str(e) if str(e) else "Invalid data type provided."
             print(f"  -> Error: {err_str}\n")
         except Exception:

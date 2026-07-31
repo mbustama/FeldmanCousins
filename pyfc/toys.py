@@ -294,22 +294,33 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
 
     # --- Branch 1: Unbinned Data (Process-based parallelism) ---
     if likelihood_type == "unbinned":
+        # Deliberately NOT a `with` block. On the failure path below, `with` would call
+        # shutdown(wait=True) on the way out and block until every worker exits -- but the
+        # workers are exactly what may be wedged, so the recovery would hang instead of
+        # recovering. Observed on Python 3.9: a broken pool left forked children that never
+        # exited, and the run sat for two hours (until cancelled) rather than falling
+        # through to the ThreadPoolExecutor retry a few lines down.
+        #
+        # So the lifetime is managed explicitly and the two exits differ: the success path
+        # waits, because those results are the return value; the failure path does not,
+        # because there is nothing left to collect and something to escape from.
+        executor = concurrent.futures.ProcessPoolExecutor(max_workers=num_cores)
         try:
             t_stats = []
             n_above = 0
-            with concurrent.futures.ProcessPoolExecutor(max_workers=num_cores) as executor:
-                for batch_start in range(0, n_toys, batch_size):
-                    batch_end = min(batch_start + batch_size, n_toys)
-                    args_batch = [(t, true_params, n_params, fit_mode, fix_idx, fix_A, fix_B, t_vA, t_vB,
-                                  pdf_components, bounds_list, S_mc_pool, B_mc_pool, strategy,
-                                  compute_rates_func, generate_toy_func, bounds_func, constraints, scipy_method)
-                                  for t in range(batch_start, batch_end)]
-                    batch_results = list(executor.map(_worker_unbinned_toy, args_batch))
-                    t_stats.extend(batch_results)
-                    if do_adaptive:
-                        n_above += sum(1 for v in batch_results if v >= t_data)
-                        if _adaptive_stop_decision(n_above, len(t_stats), alpha):
-                            break
+            for batch_start in range(0, n_toys, batch_size):
+                batch_end = min(batch_start + batch_size, n_toys)
+                args_batch = [(t, true_params, n_params, fit_mode, fix_idx, fix_A, fix_B, t_vA, t_vB,
+                              pdf_components, bounds_list, S_mc_pool, B_mc_pool, strategy,
+                              compute_rates_func, generate_toy_func, bounds_func, constraints, scipy_method)
+                              for t in range(batch_start, batch_end)]
+                batch_results = list(executor.map(_worker_unbinned_toy, args_batch))
+                t_stats.extend(batch_results)
+                if do_adaptive:
+                    n_above += sum(1 for v in batch_results if v >= t_data)
+                    if _adaptive_stop_decision(n_above, len(t_stats), alpha):
+                        break
+            executor.shutdown(wait=True)
             return np.array(t_stats)
         except Exception as e:
             # This is deliberately broad -- pool-infrastructure failures
@@ -326,6 +337,13 @@ def generate_and_fit_toys_python(true_params, n_params, fit_mode, fix_idx, fix_A
             # which is the actual signal that this was a user-code bug
             # rather than a pool problem.
             warnings.warn(f"Toy generation via ProcessPoolExecutor did not complete ({type(e).__name__}: {e}). Retrying via ThreadPoolExecutor -- if this same error recurs there, it is most likely a bug in your compute_rates_func/generate_toy_func/pdf_components, not a ProcessPoolExecutor/pickling issue.")
+        finally:
+            # Backstop, and the piece that replaces what `with` used to guarantee: release
+            # the pool on every exit, including the BaseExceptions the `except` above does
+            # not catch (KeyboardInterrupt being the one that matters -- Ctrl-C during a
+            # long toy run). Non-blocking for the same reason as the failure path, and a
+            # no-op when the success path has already shut down cleanly.
+            executor.shutdown(wait=False)
 
     # --- Branch 2: Binned Data (Thread-based parallelism) or Unbinned Fallback ---
     if likelihood_type == "binned":
