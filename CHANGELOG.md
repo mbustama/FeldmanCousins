@@ -201,6 +201,25 @@ code before being kept.
   unserialisable objects, and a real 2D run is read back from disk and
   re-dumped through a stock `json.dump` to prove nothing NumPy-typed survived.
   `orchestrator.py` 84% -> 89%.
+- **Tests for the last two cold paths in `orchestrator.py`**
+  (`tests/test_2d_resume_and_sparsify.py`): the 2D half of the checkpoint-resume
+  block, and `sparsify_grid`'s nearest-neighbour interpolation fallback. Both
+  were unrun because of a condition no existing test satisfied --
+  `test_checkpoint_resume.py` passes `compute_2D_intervals=False` on every run,
+  and the fallback is the `else` of `if SCIPY_AVAILABLE`, which never fires
+  because SciPy is a hard dependency of the test extra. 2D contours are the
+  expensive half of a run, so they are exactly what a user restarting after a
+  walltime kill most needs back, and silently recomputing them would look
+  identical to working. Both tests needed a second attempt to become
+  meaningful: the resume test first used two parameters and asserted no 2D fit
+  was recomputed, which is the wrong claim -- checkpoints are written per
+  completed *pair*, so a crash mid-pair legitimately loses that pair -- and now
+  uses three parameters and asserts on the amount of work skipped. The sparsify
+  test first used a 5x5 grid, at which size the edge-refinement pass
+  re-evaluates every cell and overwrites the interpolation entirely, so
+  deleting the fallback changed nothing; at 15x15 the interior survives, and
+  removing it leaves 79 of 225 cells at NaN. `orchestrator.py` 89% -> 94%,
+  package total 92% -> 93%.
 - **A Downloads badge**, in `README.md` and on the documentation homepage,
   matching the placement used in the author's Magnus project: between the
   Python-version and ruff badges. It reports PyPI installs of
