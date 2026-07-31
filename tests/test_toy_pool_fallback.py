@@ -21,7 +21,6 @@ that the ThreadPoolExecutor retry deliberately does *not* catch, so a real user 
 uncaught on the second attempt. Both halves of that contract are tested here.
 """
 
-import sys
 import warnings
 
 import numpy as np
@@ -29,27 +28,21 @@ import pytest
 
 from pyfc.toys import generate_and_fit_toys_python
 
-# Both tests below deliberately break a ProcessPoolExecutor mid-flight, and on Python 3.9
-# that deadlocks rather than raising: the run hung for two hours on the 3.9 CI runner --
-# 3.10, 3.11 and the coverage job had all passed in minutes -- and the runner's cleanup
-# reported two orphaned pytest children, i.e. forked workers that never exited.
+# These ran on 3.10+ only for one release, because on Python 3.9 they did not fail -- they
+# deadlocked, hanging the 3.9 CI runner for two hours while 3.10, 3.11 and the coverage job
+# all passed in minutes, with the runner reporting orphaned pytest children at cleanup.
 #
-# The hang is in `with ProcessPoolExecutor(...)`'s implicit `shutdown(wait=True)` on the
-# way out of the failed block, waiting on a child that cannot finish. It needs both halves
-# to reproduce: a parent that already has Numba's threads running, and a fork. A stdlib-only
-# reduction of the same try/with/map/except shape does NOT hang on 3.9, which is why this is
-# pinned to the interpreter rather than to the pattern.
+# The cause was in the code under test, not here: `with ProcessPoolExecutor(...)` calls
+# shutdown(wait=True) on the way out of the failed block, and it was waiting on exactly the
+# workers that were wedged. `toys.py` now manages the pool explicitly and abandons it with
+# shutdown(wait=False) on the failure path, so the skip is gone and 3.9 runs these again
+# (verified against a real 3.9 + numba environment: 120 s timeout before, 0.95 s after).
 #
-# Skipped rather than removed, because what it documents is a real exposure for users on
-# 3.9, not a defect in the test: the recovery path this file exists to check is itself
-# unreliable there. `pyproject.toml` currently declares `requires-python = ">=3.8"`.
-# See the note in CHANGELOG.md; deciding what to do about it is a separate call.
-pytestmark = pytest.mark.skipif(
-    sys.version_info < (3, 10),
-    reason="ProcessPoolExecutor shutdown deadlocks on 3.9 when the pool is broken while "
-           "Numba's threads are live in the forked parent (observed: 2h hang, orphaned "
-           "workers). The fallback path itself is unreliable on 3.9.",
-)
+# Worth knowing if this regresses: the failure mode is a HANG, not a red test, and it needs
+# the full pytest context to appear at all -- neither a stdlib reduction of the same
+# try/with/map/except shape nor a standalone script calling this same code path reproduces
+# it on 3.9. The thing that would actually catch a regression is `timeout-minutes` on the
+# CI matrix job, which turns the hang into a visible failure.
 
 
 def _rates(params, S_sumw2=None, B_sumw2=None):
