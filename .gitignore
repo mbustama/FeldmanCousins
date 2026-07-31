@@ -20,3 +20,7 @@ xbranch_compare/output/
 output/
 fc_output/
 neutrino_xsec/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
