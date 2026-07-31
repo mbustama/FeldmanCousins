@@ -519,3 +519,87 @@ def test_get_input_returns_default_on_empty_input():
 
     with patch.object(builtins, "input", lambda _prompt="": ""):
         assert get_input("toys?", default_val=500, cast_func=int) == 500
+
+
+class _Bail(BaseException):
+    """Escape hatch for the EOF tests below.
+
+    Deliberately a BaseException: `get_input`'s catch-all is `except Exception`, so this
+    passes straight through it. That is what lets an unfixed `get_input` fail this test
+    quickly instead of spinning forever, which would hang the whole suite rather than
+    report a failure.
+    """
+
+
+def _eof_then_bail(calls, limit=3):
+    """An `input` that always hits EOF, but gives up after `limit` retries."""
+    def _fake(prompt=""):
+        calls.append(prompt)
+        if len(calls) > limit:
+            raise _Bail("get_input retried after EOF instead of stopping")
+        raise EOFError
+    return _fake
+
+
+def test_get_input_stops_at_end_of_input_instead_of_retrying_forever():
+    """
+    `input()` raises EOFError when stdin is closed or exhausted. Nothing can be retried
+    at that point -- no further input will ever arrive -- so `get_input` must stop.
+
+    Before this was fixed, the bare `except Exception` swallowed EOFError and `while True`
+    retried immediately, at full CPU, forever: `pyfc-config < /dev/null` produced ~7.4
+    million prompts in 5 seconds, and one such process was found still running after
+    nearly three hours. That makes the wizard unusable in CI, in cron, in a container
+    without a TTY, and behind any pipe whose input runs out.
+
+    The retry count is the real assertion here. Exiting is necessary but not sufficient --
+    what matters is that EOF is not treated as a retryable error.
+    """
+    from pyfc.generate_config import get_input
+
+    calls = []
+    with patch.object(builtins, "input", _eof_then_bail(calls)):
+        with pytest.raises(SystemExit) as excinfo:
+            get_input("toys?", default_val=500, cast_func=int)
+
+    assert excinfo.value.code != 0, "reaching end of input is a failure, not a clean exit"
+    assert len(calls) == 1, (
+        f"get_input called input() {len(calls)} times after EOF; it must not retry, "
+        "because stdin cannot produce anything new"
+    )
+
+
+def test_get_input_does_not_silently_accept_the_default_at_end_of_input():
+    """
+    The tempting alternative fix -- treat EOF as "just press Enter" -- would be worse than
+    the hang it replaces. It would write a configuration file the user never saw, let
+    alone approved, and a wizard that fabricates answers when nobody is listening is a
+    quieter failure than one that spins.
+    """
+    from pyfc.generate_config import get_input
+
+    calls = []
+    with patch.object(builtins, "input", _eof_then_bail(calls)):
+        with pytest.raises(SystemExit):
+            get_input("toys?", default_val=500, cast_func=int)
+
+
+def test_wizard_exits_rather_than_hanging_when_stdin_is_exhausted(tmp_path):
+    """
+    The same thing one level up, through `main()`: a pipe that runs out mid-run ends the
+    wizard instead of wedging it. This is the shape of the real-world failure -- a script
+    that pipes a few answers and then closes -- and it must not write a partial config.
+    """
+    calls = []
+    cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        with patch.object(builtins, "input", _eof_then_bail(calls, limit=5)):
+            with pytest.raises(SystemExit):
+                wizard_main()
+    finally:
+        os.chdir(cwd)
+
+    assert not (tmp_path / "fc_config.json").exists(), (
+        "the wizard wrote a config file despite never receiving an answer"
+    )
