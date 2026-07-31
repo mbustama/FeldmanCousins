@@ -2,7 +2,11 @@ name: Python Tests
 
 on:
   push:
-    branches: [ "main" ]
+    # Development happens on dev and on dev-* topic branches, so those must be covered
+    # too -- an exact ["main"] filter means a topic branch gets no CI signal at all until
+    # a pull request is opened, which is the point at which a failure is most expensive
+    # to discover.
+    branches: [ "main", "dev", "dev-*" ]
   pull_request:
     branches: [ "main" ]
 
@@ -16,18 +20,102 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-        
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # Install the package along with the optional [test] dependencies
+        # Install the package along with the optional [test] dependencies.
+        # Deliberately WITHOUT the [optimizers] extra: that ultranest is optional is a
+        # promise PyFC makes to its users, and this matrix is where that promise is
+        # checked.  The 5 UltraNest tests skip here by design.  The coverage job below
+        # does install it, for a different reason -- see there.
         pip install -e ".[test]"
-        
+
     - name: Run pytest
       run: |
         pytest tests/ -v
+
+  coverage:
+    # A separate job rather than a fourth axis of the matrix above.  Which lines and
+    # branches a suite exercises does not depend on the interpreter, so measuring it three
+    # times would pay the instrumentation cost three times for one number.  As its own job
+    # it runs in parallel with the matrix and does not delay the pass/fail signal.
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Read at job level rather than on the upload step itself: a step's own `env:` block
+      # is not visible to that step's `if:` condition, and that visibility is what lets the
+      # Codecov step below switch itself off cleanly when the secret does not exist.
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # The [optimizers] extra IS installed here, unlike in the matrix job above.
+        # Without ultranest the three *_ultranest fit functions -- roughly the last third
+        # of optimizers.py -- count as missed, and 5 tests skip.  That reports a number
+        # that understates the real coverage of that module, which is worse than useless:
+        # it invites someone to go and "fix" coverage that is not actually missing, and it
+        # buries the gaps that are.
+        pip install -e ".[test,optimizers]"
+
+    - name: Run test suite with coverage
+      # The two-run JIT split lives in the script, not here, so that a developer running
+      # `scripts/run_coverage.sh` locally measures exactly what CI measures and there is
+      # only one place where the run-A/run-B classification can go stale.  What is measured
+      # (source, branch coverage, exclusions) lives in [tool.coverage.run] in
+      # pyproject.toml.  There is no --cov-fail-under: this job reports, it does not gate.
+      run: bash scripts/run_coverage.sh --xml
+
+    - name: Publish coverage summary
+      # Puts the table on the workflow run's summary page, so the number is readable
+      # without opening the log or downloading an artifact.
+      run: |
+        {
+          echo '### Coverage (statements and branches)'
+          echo
+          python -m coverage report --format=markdown
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload coverage to Codecov
+      # Dormant until a CODECOV_TOKEN repository secret exists: without one the condition
+      # is false and the step is skipped, so this costs nothing and cannot fail today.
+      # Creating that secret is the entire act of switching coverage reporting on -- at
+      # which point the README/docs badge starts resolving, and Codecov also begins
+      # commenting per-PR diff coverage, which is the part that actually changes
+      # day-to-day behaviour, since it shows the coverage of the lines in front of you.
+      #
+      # Nothing is sent anywhere until the secret is deliberately added.
+      #
+      # fail_ci_if_error is on because an upload that quietly failed would leave the badge
+      # frozen at a stale number under a green checkmark, which is worse than a visible
+      # failure.  It cannot affect the tests' own pass/fail signal, which comes from the
+      # matrix job above.
+      if: env.CODECOV_TOKEN != ''
+      uses: codecov/codecov-action@v5
+      with:
+        files: ./coverage.xml
+        fail_ci_if_error: true
+
+    - name: Upload coverage report
+      # coverage.xml is the standard Cobertura format every coverage service consumes.
+      # Publishing it as an artifact keeps the report available regardless of whether the
+      # Codecov step above is active, and is what makes the figure inspectable today.
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-xml
+        path: coverage.xml
+        if-no-files-found: error
