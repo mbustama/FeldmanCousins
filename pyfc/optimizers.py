@@ -742,7 +742,17 @@ def unconditional_fit_ultranest(data, n_params, bounds_list, compute_rates_func,
     param_names = [f'p{i+1}' for i in range(n_params)]
     run_kwargs = {'min_num_live_points': 50, 'dKL': np.inf, 'min_ess': 50, 'show_status': (verbose == 2), 'viz_callback': False}
     result = _run_ultranest_with_retry(param_names, log_likelihood, prior_transform, run_kwargs)
-    return -result['maximum_likelihood']['logl'], result['maximum_likelihood']['point']
+
+    # np.asarray, not UltraNest's value as-is: it hands back a plain Python list, and this
+    # was the only one of the six fit functions that did not return an ndarray. The two
+    # conditional UltraNest fits build their own `np.zeros(n_params)`, and all three scipy
+    # fits return arrays, so `compute_fc_intervals` -- which assigns whichever it called
+    # straight into `results["best_fit"]`, initialised as an ndarray -- ended up with a
+    # type that depended on the strategy. Nothing broke, because the value is only indexed
+    # and serialised, but any numpy operation added later would have worked under three
+    # strategies and failed under the fourth.
+    best_params = np.asarray(result['maximum_likelihood']['point'], dtype=np.float64)
+    return -result['maximum_likelihood']['logl'], best_params
 
 def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, bounds_list, compute_rates_func, verbose=1,
                                  pdf_components=None,
