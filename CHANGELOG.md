@@ -27,9 +27,10 @@ All notable changes to PyFC are documented in this file.
   at all. The job reports rather than gates: there is deliberately no
   `--cov-fail-under`, since a threshold invented before the first measurement
   either sits below the real figure and never fires, or above it and blocks
-  unrelated work. It also carries a Codecov upload step that stays dormant
-  until a `CODECOV_TOKEN` secret exists, so nothing leaves the repository until
-  public coverage reporting is deliberately switched on.
+  unrelated work. It also carries a Codecov upload step gated on a
+  `CODECOV_TOKEN` secret, skipped entirely when that secret is absent so the
+  workflow stays safe to run in a fork; the secret now exists, so uploads are
+  live, the coverage badge resolves, and Codecov comments per-PR diff coverage.
 - **`scripts/run_coverage.sh`, which splits the suite around Numba's JIT.**
   `coverage.py` traces Python bytecode, and Numba executes none: it compiles
   `@njit` functions to machine code, so every line inside `binned.py` -- six

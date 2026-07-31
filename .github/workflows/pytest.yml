@@ -91,14 +91,13 @@ jobs:
         } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Upload coverage to Codecov
-      # Dormant until a CODECOV_TOKEN repository secret exists: without one the condition
-      # is false and the step is skipped, so this costs nothing and cannot fail today.
-      # Creating that secret is the entire act of switching coverage reporting on -- at
-      # which point the README/docs badge starts resolving, and Codecov also begins
-      # commenting per-PR diff coverage, which is the part that actually changes
-      # day-to-day behaviour, since it shows the coverage of the lines in front of you.
-      #
-      # Nothing is sent anywhere until the secret is deliberately added.
+      # Gated on the CODECOV_TOKEN repository secret: without one the condition is false
+      # and the step is skipped, which keeps this workflow safe to run in a fork and kept
+      # it inert until coverage reporting was deliberately switched on.  That secret now
+      # exists for this repository, so this step is ACTIVE: it uploads on every run, the
+      # README/docs badge resolves, and Codecov comments per-PR diff coverage -- the part
+      # that actually changes day-to-day behaviour, since it shows the coverage of the
+      # lines in front of you.
       #
       # fail_ci_if_error is on because an upload that quietly failed would leave the badge
       # frozen at a stale number under a green checkmark, which is worse than a visible
