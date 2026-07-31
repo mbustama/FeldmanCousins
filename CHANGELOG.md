@@ -138,6 +138,19 @@ code before being kept.
 
 ### Changed
 
+- **`requires-python` narrowed from `>=3.8` to `>=3.9`.** The 3.8 claim was
+  never checked by anything: CI has only ever run 3.9/3.10/3.11, and this
+  release is the first time a real 3.8 environment was built and the suite run
+  against it. The result is that 141 of 148 tests pass on 3.8, but `toys.py`'s
+  `ProcessPoolExecutor` recovery path deadlocks -- it hangs indefinitely instead
+  of falling back to threads. That path is reachable by any user who passes a
+  lambda or a closure, so it is not an obscure corner. It is also not fixable
+  from here: CPython rewrote `concurrent.futures.process` in 3.9
+  (`_ExecutorManagerThread`, plus the `cancel_futures` argument to `shutdown`),
+  and 3.8's legacy queue-management implementation is what hangs -- the same
+  non-blocking shutdown that fixes 3.9 does not rescue it. With 3.8 also
+  end-of-life since October 2024, the declaration now matches what is actually
+  tested. Users on 3.8 keep resolving to 0.10.0.
 - **CI now runs on `dev` and `dev-*` branches, not only `main`.** The previous
   filter meant a topic branch got no CI signal at all until a pull request was
   opened, which is the point at which a failure is most expensive to discover.
