@@ -49,6 +49,50 @@ After installing the package, you can run the local test suite to ensure everyth
    # Run the test suite from the repository root
    pytest tests/ -v
 
+Measuring test coverage
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``test`` extra also installs ``pytest-cov``, so the same suite can report
+which lines and branches of ``pyfc/`` it exercises:
+
+.. code-block:: bash
+
+   bash scripts/run_coverage.sh
+
+Add ``--html`` for a browsable ``htmlcov/`` tree, which is the more useful form
+when the question is *which* branch of a particular function is cold, or
+``--xml`` for the Cobertura ``coverage.xml`` that CI uploads. What to
+measure -- the source tree, branch coverage, and what is excluded -- is
+configured once in ``[tool.coverage.run]`` in ``pyproject.toml``, so a local run
+measures exactly what CI measures.
+
+That wrapper exists because of Numba. PyFC's mathematical core
+(``pyfc/binned.py``) is six ``@njit``-compiled functions, ``calc_nll`` among
+them, and ``coverage.py`` traces Python bytecode -- which Numba never executes,
+since it compiles those functions to machine code on first call. Every line
+inside them is therefore reported as missed no matter how hard the suite hits
+them: measured over the three test files that target ``calc_nll`` directly,
+``binned.py`` reports **10%** with the JIT on and **90%** under
+``NUMBA_DISABLE_JIT=1``. The first number is not real, and publishing it would
+be actively misleading about the part of PyFC that most needs to be
+trustworthy.
+
+Disabling the JIT is not uniformly free, though. Most files are *faster*
+without it, since they stop paying compilation overhead, but
+``strategy="grid"``'s ``@njit(parallel=True)`` toy generators degrade into
+plain Python loops, and a whole-suite run with the JIT disabled does not finish
+in any reasonable time. So ``run_coverage.sh`` splits the suite in two -- the
+pathological files run with the JIT on, everything else with it off -- and lets
+``coverage`` combine the halves. A bare ``pytest tests/ --cov`` still works and
+is measured identically; it just reports the misleading ~10% for ``binned.py``.
+
+Branch coverage is on deliberately. A plain line-coverage figure flatters this
+codebase: the orchestrator is a dispatch machine, and most of what can go wrong
+in it is a branch only ever taken one way -- ``strategy="grid"`` vs
+``"adaptive"``, a resumed checkpoint vs a fresh run, the disconnected-interval
+reporting path, the ``if ultranest is None`` guards. Line coverage counts those
+as covered the moment the function runs at all.
+
 Developer Installation
 ----------------------
 If you plan to modify the codebase or contribute to the project, you should install the package with its optional testing and development dependencies included:
@@ -56,6 +100,10 @@ If you plan to modify the codebase or contribute to the project, you should inst
 .. code-block:: bash
 
    pip install -e ".[test]"
+
+   # To reproduce the CI coverage job exactly, add the optimizers extra so the
+   # UltraNest code paths are measured rather than counted as missed
+   pip install -e ".[test,optimizers]"
 
 File Tree
 ---------
@@ -70,7 +118,7 @@ The project structure is organized modularly to separate analytical likelihood m
    │       ├── lint.yml                 # CI linting and formatting pipeline
    │       ├── pages.yml                # GitHub Pages deployment for documentation
    │       ├── publish.yml              # PyPI (OIDC) automated publishing workflow
-   │       └── pytest.yml               # GitHub Actions CI testing pipeline
+   │       └── pytest.yml               # GitHub Actions CI testing and coverage pipeline
    ├── config/
    │   └── example_fc_config.json       # Template configuration file for CLI usage
    ├── docs/                            # Sphinx documentation configuration and source
@@ -116,11 +164,13 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── toys.py                      # Multiprocessing engines for MC pseudo-experiment generation
    │   └── unbinned.py                  # Extended Unbinned Maximum Likelihood (EUML) formulations
    ├── scripts/
-   │   └── check_changelog_sync.py      # Structural sync checker for CHANGELOG.md <-> changelog.rst
+   │   ├── check_changelog_sync.py      # Structural sync checker for CHANGELOG.md <-> changelog.rst
+   │   └── run_coverage.sh              # Coverage measurement, splitting the suite around Numba's JIT
    ├── tests/                           # Unit and integration test suite
    │   ├── test_adaptive_toys.py                        # Tests for the validated adaptive_toys/toy_batch_size early-stopping behavior
    │   ├── test_bounds_func.py                          # Tests for the bounds_func parameter-dependent bounds mechanism
    │   ├── test_checkpoint_resume.py                    # Tests for the real warm_start/checkpoint-resume machinery, simulating a genuine mid-run interruption
+   │   ├── test_config_layer.py                         # Structural + behavioural tests for the CLI/JSON config layer and the interactive wizard
    │   ├── test_constraints.py                          # Tests for scipy/UltraNest LinearConstraint/NonlinearConstraint support
    │   ├── test_core.py                                 # Core installation and import tests, including checks for optional dependencies
    │   ├── test_disconnected_intervals.py               # Tests for the contiguous-run helper and disconnected 1D interval reporting

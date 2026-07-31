@@ -6,6 +6,7 @@
 
 [![CI Tests](https://github.com/mbustama/FeldmanCousins/actions/workflows/pytest.yml/badge.svg)](https://github.com/mbustama/FeldmanCousins/actions/workflows/pytest.yml)
 [![Code Quality](https://github.com/mbustama/FeldmanCousins/actions/workflows/lint.yml/badge.svg)](https://github.com/mbustama/FeldmanCousins/actions/workflows/lint.yml)
+[![codecov](https://codecov.io/gh/mbustama/FeldmanCousins/branch/main/graph/badge.svg)](https://codecov.io/gh/mbustama/FeldmanCousins)
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://mbustama.github.io/FeldmanCousins/)
 [![PyPI](https://img.shields.io/pypi/v/PyFeldmanCousins.svg)](https://pypi.org/project/PyFeldmanCousins/)
 [![License: GPL v3+](https://img.shields.io/badge/License-GPLv3+-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
@@ -94,24 +95,55 @@ pip install pytest
 pytest tests/ -v
 ```
 
+#### Measuring Test Coverage
+
+The `test` extra also installs `pytest-cov`, so the same suite can report which lines and branches of `pyfc/` it actually exercises. What is measured — the source tree, branch coverage, and what is excluded — is configured once in `[tool.coverage.run]` in `pyproject.toml`, so a local run measures exactly what CI measures:
+
+```bash
+bash scripts/run_coverage.sh
+```
+
+Add `--html` for a browsable `htmlcov/` tree, which is the more useful form when the question is *which* branch of a particular function is cold, or `--xml` for the Cobertura `coverage.xml` that CI uploads.
+
+That wrapper exists because of Numba. PyFC's mathematical core (`pyfc/binned.py`) is six `@njit`-compiled functions, `calc_nll` among them, and `coverage.py` traces Python bytecode — which Numba never executes, since it compiles those functions to machine code on first call. Every line inside them is therefore reported as missed no matter how hard the suite hits them. Measured over the three test files that target `calc_nll` directly:
+
+| Run | `pyfc/binned.py` reports |
+|---|---|
+| default (JIT on) | **10%** |
+| `NUMBA_DISABLE_JIT=1` | **90%** |
+
+10% is not a real number, and publishing it would be actively misleading about the part of PyFC that most needs to be trustworthy. Setting `NUMBA_DISABLE_JIT=1` makes Numba run the decorated functions as ordinary Python, which coverage can trace. That is not uniformly free, though: most files are *faster* without JIT (they stop paying compilation overhead), but `strategy="grid"`'s `@njit(parallel=True)` toy generators degrade into plain Python loops, and a whole-suite run with JIT disabled does not finish in any reasonable time. So `run_coverage.sh` splits the suite in two — the pathological files run with JIT on, everything else with JIT off — and lets `coverage` combine the halves. Running a bare `pytest tests/ --cov` still works and is measured identically; it just reports the misleading ~10% for `binned.py`.
+
+Branch coverage is on deliberately. A plain line-coverage figure flatters this codebase: the orchestrator is a dispatch machine, and most of what can go wrong in it is a branch only ever taken one way — `strategy="grid"` vs `"adaptive"`, a resumed checkpoint vs a fresh run, the disconnected-interval reporting path, the `if ultranest is None` guards. Line coverage counts those as covered the moment the function runs at all.
+
 ### Continuous Integration (CI)
 
 PyFC is protected by a Continuous Integration (CI) pipeline powered by GitHub Actions. Every time code is pushed or a Pull Request is opened, the CI automatically provisions pristine Ubuntu runners across a matrix of Python versions (e.g., 3.9, 3.10, 3.11). It installs PyFC entirely from scratch and executes the full test suite. This strict isolation eliminates "it works on my machine" biases and guarantees that new code contributions do not introduce regressions.
 
-The test suite currently comprises 99 tests across 20 files under `tests/` (94 always run, plus 5 UltraNest-specific tests that skip automatically if the optional `ultranest` package isn't installed), grouped into four categories:
+The matrix job deliberately installs only `.[test]`, *without* the optional `optimizers` extra: that `ultranest` is optional is a promise PyFC makes to its users, and this is where that promise is checked.
+
+The test suite currently comprises 132 tests across 21 files under `tests/` (127 always run, plus 5 UltraNest-specific tests that skip automatically if the optional `ultranest` package isn't installed), grouped into four categories:
 * **Core statistical correctness** (37 tests, 6 files): the smoothed unphysical-rate NLL penalty and its boundary-discontinuity/NaN handling, the finite-MC likelihood formula checked against hand-computed references (including its numerically-stable high-`alpha` reformulation), N-dimensional and non-contiguous binned data, disconnected 1D accepted-interval reporting, unbinned `pdf_components` correctness (2- and 3+-component models), and the unbinned toy-generation/fitting pipeline end to end.
 * **Optimizer robustness** (29 tests, 5 files): optimizer restarts and neighbor warm-starting, `bounds_func`/`constraints` support (SciPy and UltraNest `LinearConstraint`/`NonlinearConstraint`, including the zero-free-parameters edge case), SciPy boundary clamping, and Asimov-dataset convergence (the minimizer must recover the known true parameters exactly).
 * **Algorithmic features** (13 tests, 2 files): `sparsify_grid`'s boundary-refinement guard, and the validated `adaptive_toys`/`toy_batch_size` early-stopping behavior.
-* **Infrastructure** (20 tests, 7 files): core imports and optional-dependency detection, I/O integrity, the real `warm_start`/checkpoint-resume machinery (not just an `.npz` round-trip), multiprocessing serialization via `ProcessPoolExecutor`, Numba JIT compilation hooks, UltraNest's internal-bug retry wrapper, and corner-plot generation.
+* **Infrastructure** (53 tests, 8 files): core imports and optional-dependency detection, I/O integrity, the real `warm_start`/checkpoint-resume machinery (not just an `.npz` round-trip), multiprocessing serialization via `ProcessPoolExecutor`, Numba JIT compilation hooks, UltraNest's internal-bug retry wrapper, corner-plot generation, and the CLI/JSON configuration layer — both its `Defaults -> JSON -> CLI` precedence chain and a set of self-discovering structural sweeps that check every analysis parameter lines up across all four places it is written down (the hardcoded defaults, the `argparse` flags, the interactive wizard, and `compute_fc_intervals`' own signature).
 
 (Counts and groupings reflect the test suite at the time of writing; run `pytest tests/ --collect-only -q` for the current, authoritative total.)
 
+The same workflow also has a separate **Coverage** job. It runs the suite once more under `scripts/run_coverage.sh`, prints the per-module statement and branch coverage on the run's summary page, and uploads `coverage.xml` as a build artifact. It reports rather than gates — there is no `--cov-fail-under` — and it is its own job rather than a fourth entry in the matrix because coverage does not depend on the interpreter, so measuring it three times would only pay the instrumentation cost three times. Unlike the matrix job it *does* install `.[test,optimizers]`: without `ultranest`, the three `*_ultranest` fit functions count as missed and the reported figure for `optimizers.py` understates its real coverage, which invites someone to go and "fix" coverage that is not actually missing.
+
+It also carries a Codecov upload step that is currently **dormant**: it is skipped unless a `CODECOV_TOKEN` repository secret exists, so nothing is sent anywhere today and the coverage badge above reads as unknown. Creating that secret is the whole act of switching public coverage reporting on, at which point Codecov also begins commenting per-PR diff coverage — the part that actually changes day-to-day behaviour, since it shows the coverage of the lines in front of you.
+
 ### Developer Installation
-If you plan to modify the codebase or contribute to the project, you should install the package with its optional testing and development dependencies included. This ensures you have tools like `pytest` ready to go without cluttering the requirements for standard users:
+If you plan to modify the codebase or contribute to the project, you should install the package with its optional testing and development dependencies included. This ensures you have tools like `pytest` and `pytest-cov` ready to go without cluttering the requirements for standard users:
 
 ```bash
 # The quote marks are important for some shells (like zsh)
 pip install -e ".[test]"
+
+# To reproduce the CI coverage job exactly, add the optimizers extra so the
+# UltraNest code paths are measured rather than counted as missed
+pip install -e ".[test,optimizers]"
 ```
 
 ---
@@ -128,7 +160,7 @@ FeldmanCousins/
 │       ├── lint.yml                 # CI linting and formatting pipeline
 │       ├── pages.yml                # GitHub Pages deployment for documentation
 │       ├── publish.yml              # PyPI (OIDC) automated publishing workflow
-│       └── pytest.yml               # GitHub Actions CI testing pipeline
+│       └── pytest.yml               # GitHub Actions CI testing and coverage pipeline
 ├── config/
 │   └── example_fc_config.json       # Template configuration file for CLI usage
 ├── docs/                            # Sphinx documentation configuration and source
@@ -174,11 +206,13 @@ FeldmanCousins/
 │   ├── toys.py                      # Multiprocessing engines for MC pseudo-experiment generation
 │   └── unbinned.py                  # Extended Unbinned Maximum Likelihood (EUML) formulations
 ├── scripts/
-│   └── check_changelog_sync.py      # Structural sync checker for CHANGELOG.md <-> changelog.rst
+│   ├── check_changelog_sync.py      # Structural sync checker for CHANGELOG.md <-> changelog.rst
+│   └── run_coverage.sh              # Coverage measurement, splitting the suite around Numba's JIT
 ├── tests/                           # Unit and integration test suite
 │   ├── test_adaptive_toys.py                        # Tests for the validated adaptive_toys/toy_batch_size early-stopping behavior
 │   ├── test_bounds_func.py                          # Tests for the bounds_func parameter-dependent bounds mechanism
 │   ├── test_checkpoint_resume.py                    # Tests for the real warm_start/checkpoint-resume machinery, simulating a genuine mid-run interruption
+│   ├── test_config_layer.py                         # Structural + behavioural tests for the CLI/JSON config layer and the interactive wizard
 │   ├── test_constraints.py                          # Tests for scipy/UltraNest LinearConstraint/NonlinearConstraint support
 │   ├── test_core.py                                 # Core installation and import tests, including checks for optional dependencies
 │   ├── test_disconnected_intervals.py               # Tests for the contiguous-run helper and disconnected 1D interval reporting
