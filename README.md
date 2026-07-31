@@ -11,6 +11,7 @@
 [![PyPI](https://img.shields.io/pypi/v/PyFeldmanCousins.svg)](https://pypi.org/project/PyFeldmanCousins/)
 [![License: GPL v3+](https://img.shields.io/badge/License-GPLv3+-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Downloads](https://pepy.tech/badge/PyFeldmanCousins)](https://pepy.tech/project/PyFeldmanCousins)
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 **PyFC** is a rigorous, high-performance frequentist statistical analysis framework for Python. It automates the construction of classical confidence intervals and regions using the unified Feldman-Cousins approach, seamlessly transitioning between one-sided upper limits and two-sided bounds while guaranteeing exact frequentist coverage. 
@@ -156,7 +157,6 @@ The project structure is organized modularly to separate analytical likelihood m
 FeldmanCousins/
 ├── .github/
 │   └── workflows/
-│       ├── changelog-sync.yml       # CI check that CHANGELOG.md and changelog.rst stay in sync
 │       ├── lint.yml                 # CI linting and formatting pipeline
 │       ├── pages.yml                # GitHub Pages deployment for documentation
 │       ├── publish.yml              # PyPI (OIDC) automated publishing workflow
@@ -172,7 +172,7 @@ FeldmanCousins/
 │   ├── source/
 │   │   ├── _static/
 │   │   │   └── pyfc_logo.png        # Project branding asset
-│   │   ├── changelog.rst            # Rendered changelog page (mirrors root CHANGELOG.md)
+│   │   ├── changelog.rst            # Renders the root CHANGELOG.md via myst-parser
 │   │   ├── conf.py                  # Sphinx build configuration
 │   │   ├── configuration.rst        # Interactive CLI tool and parameter definitions
 │   │   ├── index.rst                # Master documentation page with high-level overview and table of contents
@@ -206,7 +206,6 @@ FeldmanCousins/
 │   ├── toys.py                      # Multiprocessing engines for MC pseudo-experiment generation
 │   └── unbinned.py                  # Extended Unbinned Maximum Likelihood (EUML) formulations
 ├── scripts/
-│   ├── check_changelog_sync.py      # Structural sync checker for CHANGELOG.md <-> changelog.rst
 │   └── run_coverage.sh              # Coverage measurement, splitting the suite around Numba's JIT
 ├── tests/                           # Unit and integration test suite
 │   ├── test_adaptive_toys.py                        # Tests for the validated adaptive_toys/toy_batch_size early-stopping behavior

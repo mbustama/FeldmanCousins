@@ -31,6 +31,10 @@ PyFC: A Python Framework for Feldman-Cousins Confidence Intervals
    :target: https://www.python.org/downloads/
    :alt: Python 3.9+
 
+.. image:: https://pepy.tech/badge/PyFeldmanCousins
+   :target: https://pepy.tech/project/PyFeldmanCousins
+   :alt: Downloads
+
 .. image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
    :target: https://github.com/astral-sh/ruff
    :alt: Code style: ruff
