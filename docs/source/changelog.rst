@@ -72,6 +72,33 @@ Added
   bad cast, a value outside ``choices``, and a failed validator. Every one of
   these tests was verified to fail against a deliberately broken version of the
   code before being kept.
+* **Tests for the unbinned grid-search path**
+  (``tests/test_unbinned_grid.py``), the second gap the measurement exposed.
+  ``unbinned.py`` sat at 34%, and reading which lines were cold showed the
+  shortfall was not scattered: four whole functions --
+  ``conditional_fit_grid_unbinned_1d``, ``conditional_fit_grid_unbinned_2d``,
+  ``generate_and_fit_toys_grid_unbinned_1d`` and
+  ``generate_and_fit_toys_grid_unbinned_2d`` -- were executed by nothing at
+  all, despite every one being imported and dispatched to by
+  ``compute_fc_intervals``. Across the entire suite
+  ``likelihood_type="unbinned"`` appeared exactly once, and that test used
+  ``strategy="scipy"``, so the unbinned grid path shipped and was reachable by
+  users while never being run. That combination is the one place in PyFC where
+  profiling is exhaustive rather than numerical, which makes a silent error
+  there especially hard to notice: a scan that quietly profiles over the wrong
+  axis still returns plausible, finite, monotonic-looking numbers. The tests
+  therefore compare against oracles computed independently in the test body --
+  an explicit loop over the same grid calling ``calc_nll_unbinned`` directly --
+  and against the invariants that define a profile likelihood ratio: the
+  conditional NLL never undercuts the unconditional minimum, and the two
+  coincide exactly at the best-fit point. The end-to-end run reconstructs the
+  expected ``t_data`` array rather than asserting finiteness, because
+  ``t_data`` is clamped at zero and a mis-wired dispatch would otherwise hide
+  behind a valid-looking array of zeros. Also closes the unbinned twins of two
+  guards ``binned.py`` has had tested since v0.10.0: the NaN per-event-density
+  rejection and the quadratic barrier for unphysical densities. Takes
+  ``unbinned.py`` from 34% to 100%; all 13 mutations tried against these tests
+  were detected.
 
 Changed
 ~~~~~~~
@@ -86,6 +113,34 @@ Changed
   go and "fix" coverage that is not actually missing; but that ``ultranest`` is
   optional is a promise PyFC makes to its users, and the matrix is where that
   promise is checked.
+
+Fixed
+~~~~~
+* **The wheel no longer installs ``tests``, ``scripts``, ``docs`` and
+  ``xbranch_compare`` as top-level packages.**
+  ``[tool.setuptools.packages.find]`` had ``where = ["."]`` with no include
+  filter, so setuptools treated every top-level directory in the repository as
+  something to install: the 0.10.0 wheel declares eight top-level names and
+  ships four of them with real content. The practical consequence is that
+  ``pip install PyFeldmanCousins`` dropped a top-level ``tests`` package into
+  the user's ``site-packages``, where it shadows or is shadowed by any other
+  project's ``tests`` -- a collision that is hard to diagnose precisely because
+  nothing about it points back at this package. Now ``include = ["pyfc*"]``,
+  verified by building the wheel before and after and installing it into a
+  clean virtualenv: ``import pyfc`` resolves to ``site-packages`` and none of
+  the other names are importable. The ``pyfc-config`` entry point and the
+  bundled licence are unaffected, and the sdist still carries ``tests/`` so a
+  source checkout can run the suite.
+* **Coverage now traces inside ``ProcessPoolExecutor`` workers.** ``toys.py``
+  reported 62% with ``_worker_unbinned_toy`` counted as entirely missed. It was
+  not missed: the end-to-end unbinned test dispatches every toy through it, but
+  coverage does not follow child processes by default. An A/B on the same
+  single test file, changing nothing but the setting, moved ``toys.py`` from
+  26% to 37% without a single new test being written. This is the same class of
+  error as the Numba problem ``scripts/run_coverage.sh`` exists for, and the
+  more dangerous of the two: the Numba figure was absurd enough to force a
+  second look, whereas a plausible 62% instead invites someone to write tests
+  for code that is already covered.
 
 0.10.0
 ------
