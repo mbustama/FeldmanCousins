@@ -111,6 +111,19 @@ Added
   thread retry rather than being converted into a warning plus a
   plausible-looking array of numbers.
 
+  .. warning::
+     **Known issue, found by writing them:** on Python 3.9 that recovery does
+     not recover -- it deadlocks. Breaking the pool while Numba's threads are
+     live in the forked parent leaves a worker that never exits, and the
+     implicit ``shutdown(wait=True)`` on the way out of the failed block waits
+     on it forever. Observed as a two-hour CI hang on the 3.9 runner, with
+     orphaned workers reported at cleanup, while 3.10 and 3.11 passed in
+     minutes. The tests are skipped below 3.10 rather than removed, since what
+     they document is a real exposure for users on 3.9 and not a defect in the
+     tests. ``requires-python`` is still ``>=3.8``; narrowing it, or making the
+     fallback non-blocking, is a deliberate decision that has not been taken
+     here.
+
 Changed
 ~~~~~~~
 * **CI now runs on ``dev`` and ``dev-*`` branches, not only ``main``.** The
