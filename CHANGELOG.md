@@ -172,6 +172,36 @@ code before being kept.
   no module docstring reintroduces a hand-written version string. All five links
   fail silently when broken, which is how the docs came to advertise 0.1.0 for
   nine releases.
+- **Tests that actually run the three UltraNest fits**
+  (`tests/test_ultranest_fits.py`). Installing `ultranest` moved `optimizers.py`
+  from 59% only to 63%, and the cold lines said why: nothing ran the fits.
+  `test_ultranest_retry.py` exercises the retry wrapper against a mocked
+  sampler, and `test_constraints.py` reaches the two conditional fits only in
+  the zero-free-parameters case, which returns before sampling begins. So
+  `unconditional_fit_ultranest`'s body was entirely unrun and both conditional
+  fits were entered but never sampled -- roughly the last third of the module,
+  shipped and reachable via `strategy="ultranest"`/`"hybrid"`. The new tests fit
+  an Asimov dataset, where the generating parameters are an oracle rather than
+  something read back out of the fit, and check MLE recovery, that the tested
+  parameters are pinned exactly, the profile-likelihood invariants in both
+  directions, the `bounds_func` hook, the unbinned likelihood branch, the toy
+  generators' UltraNest paths through both pools, and agreement with SciPy on
+  the same optimum -- the last being the check that would catch the two backends
+  being wired to different likelihoods, which no single-backend test can see.
+  Tolerances come from measurement: the sampler lands within 0.004 of the truth,
+  and the test statistic reads about -1e-4 at the true value, so the invariant
+  assertions carry that much slack rather than demanding exactly zero.
+  `optimizers.py` 59% -> 92%, `toys.py` 78% -> 88%.
+- **Tests for the JSON results export** (`tests/test_json_export.py`).
+  `orchestrator.py`'s cold lines were not in the statistics but in the
+  serialisation layer: `NumpyEncoder`'s type conversions and the entire 2D
+  branch of the payload were unrun. That layer is what a user actually reads,
+  and a `TypeError` there arrives at the very end of a long run, after all the
+  expensive work is done. Each encoder branch is now checked individually, along
+  with NaN/infinity handling and the fallback that must keep rejecting genuinely
+  unserialisable objects, and a real 2D run is read back from disk and
+  re-dumped through a stock `json.dump` to prove nothing NumPy-typed survived.
+  `orchestrator.py` 84% -> 89%.
 
 ### Changed
 
@@ -212,6 +242,15 @@ code before being kept.
 
 ### Fixed
 
+- **`unconditional_fit_ultranest` now returns an `ndarray` like every other fit
+  function.** It passed UltraNest's result dict straight through, so it alone
+  among the six returned a plain Python list. `compute_fc_intervals` assigns
+  whichever fit it called directly into `results["best_fit"]`, which it
+  initialises as an ndarray, so the type of that entry silently depended on
+  which strategy ran. Nothing broke, because the value is only indexed and
+  serialised -- but any NumPy operation added to it later would have worked
+  under three strategies and failed under the fourth, at the end of a long run.
+  Found by writing the first test that actually calls the function.
 - **The wheel no longer installs `tests`, `scripts`, `docs` and
   `xbranch_compare` as top-level packages.** `[tool.setuptools.packages.find]`
   had `where = ["."]` with no include filter, so setuptools treated every

@@ -175,6 +175,7 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── test_core.py                                 # Core installation and import tests, including checks for optional dependencies
    │   ├── test_disconnected_intervals.py               # Tests for the contiguous-run helper and disconnected 1D interval reporting
    │   ├── test_finite_mc_likelihood.py                 # Hand-computed-reference tests for the finite-MC likelihood formula
+   │   ├── test_json_export.py                          # Tests for the JSON results export: NumpyEncoder conversions and the 2D payload
    │   ├── test_io.py                                   # Tests for File I/O and intermediate .npz checkpoint recovery mechanisms
    │   ├── test_multiprocessing.py                      # Tests for unbinned execution and multi-processing concurrency using ProcessPoolExecutor
    │   ├── test_nd_binned.py                            # Tests for N-dimensional binned data (flatten-invariance, 2D histogram smoke test)
@@ -187,6 +188,7 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── test_sparsify_grid.py                        # Regression tests for the sparsify_grid boundary-refinement guard fix
    │   ├── test_statistics.py                           # Tests for statistical correctness, likelihood behavior, and Asimov treatment convergence
    │   ├── test_toy_pool_fallback.py                    # Tests for the toy pool's ProcessPoolExecutor -> ThreadPoolExecutor recovery on unpicklable callables
+   │   ├── test_ultranest_fits.py                       # Tests that actually run the three UltraNest fits against an Asimov dataset
    │   ├── test_ultranest_retry.py                      # Tests for the UltraNest internal-bug retry wrapper
    │   ├── test_unbinned_grid.py                        # Tests for the unbinned grid-search path, against brute-force oracles and the PLR invariants
    │   ├── test_unbinned_toys.py                        # Tests for the unbinned toy-generation/fitting pipeline via a real ProcessPoolExecutor
