@@ -69,6 +69,51 @@ All notable changes to PyFC are documented in this file.
   value outside `choices`, and a failed validator. Every one of these tests was
   verified to fail against a deliberately broken version of the code before
   being kept.
+- **Tests for the unbinned grid-search path** (`tests/test_unbinned_grid.py`),
+  the second gap the measurement exposed. `unbinned.py` sat at 34%, and reading
+  which lines were cold showed the shortfall was not scattered: four whole
+  functions -- `conditional_fit_grid_unbinned_1d`,
+  `conditional_fit_grid_unbinned_2d`, `generate_and_fit_toys_grid_unbinned_1d`
+  and `generate_and_fit_toys_grid_unbinned_2d` -- were executed by nothing at
+  all, despite every one being imported and dispatched to by
+  `compute_fc_intervals`. Across the entire suite `likelihood_type="unbinned"`
+  appeared exactly once, and that test used `strategy="scipy"`, so the unbinned
+  grid path shipped and was reachable by users while never being run. That
+  combination is the one place in PyFC where profiling is exhaustive rather
+  than numerical, which makes a silent error there especially hard to notice: a
+  scan that quietly profiles over the wrong axis still returns plausible,
+  finite, monotonic-looking numbers. The tests therefore compare against
+  oracles computed independently in the test body -- an explicit loop over the
+  same grid calling `calc_nll_unbinned` directly -- and against the invariants
+  that define a profile likelihood ratio: the conditional NLL never undercuts
+  the unconditional minimum, and the two coincide exactly at the best-fit
+  point. The end-to-end run reconstructs the expected `t_data` array rather
+  than asserting finiteness, because `t_data` is clamped at zero and a
+  mis-wired dispatch would otherwise hide behind a valid-looking array of
+  zeros. Also closes the unbinned twins of two guards `binned.py` has had
+  tested since v0.10.0: the NaN per-event-density rejection and the quadratic
+  barrier for unphysical densities. Takes `unbinned.py` from 34% to 100%; all
+  13 mutations tried against these tests were detected.
+- **Tests for the toy pool's `ThreadPoolExecutor` fallback**
+  (`tests/test_toy_pool_fallback.py`). The unbinned toy path dispatches each toy
+  to a separate process, which imposes a requirement users are never told about
+  at the call site: every callable they pass must be picklable, and a lambda or
+  a closure is not. `toys.py` already recovers from that by warning and retrying
+  the batch on threads, but nothing exercised the recovery, since it only runs
+  once the pool has already failed. Both halves of its contract are now covered:
+  that unpicklable closures still yield a complete set of test statistics, and
+  that a genuine bug in user code surfaces *uncaught* on the thread retry rather
+  than being converted into a warning plus a plausible-looking array of numbers.
+  **Known issue, found by writing them:** on Python 3.9 that recovery does not
+  recover -- it deadlocks. Breaking the pool while Numba's threads are live in
+  the forked parent leaves a worker that never exits, and the implicit
+  `shutdown(wait=True)` on the way out of the failed block waits on it forever.
+  Observed as a two-hour CI hang on the 3.9 runner, with orphaned workers
+  reported at cleanup, while 3.10 and 3.11 passed in minutes. The tests are
+  skipped below 3.10 rather than removed, since what they document is a real
+  exposure for users on 3.9 and not a defect in the tests. `requires-python` is
+  still `>=3.8`; narrowing it, or making the fallback non-blocking, is a
+  deliberate decision that has not been taken here.
 
 ### Changed
 
@@ -82,6 +127,38 @@ All notable changes to PyFC are documented in this file.
   "fix" coverage that is not actually missing; but that `ultranest` is optional
   is a promise PyFC makes to its users, and the matrix is where that promise is
   checked.
+
+### Fixed
+
+- **The wheel no longer installs `tests`, `scripts`, `docs` and
+  `xbranch_compare` as top-level packages.** `[tool.setuptools.packages.find]`
+  had `where = ["."]` with no include filter, so setuptools treated every
+  top-level directory in the repository as something to install: the 0.10.0
+  wheel declares eight top-level names and ships four of them with real
+  content. The practical consequence is that `pip install PyFeldmanCousins`
+  dropped a top-level `tests` package into the user's `site-packages`, where it
+  shadows or is shadowed by any other project's `tests` -- a collision that is
+  hard to diagnose precisely because nothing about it points back at this
+  package. Now `include = ["pyfc*"]`, verified by building the wheel before and
+  after and installing it into a clean virtualenv: `import pyfc` resolves to
+  `site-packages` and none of the other names are importable. The `pyfc-config`
+  entry point and the bundled licence are unaffected, and the sdist still
+  carries `tests/` so a source checkout can run the suite.
+- **Coverage now traces inside `ProcessPoolExecutor` workers and threads.**
+  `toys.py` reported 62% with `_worker_unbinned_toy` counted as entirely missed.
+  It was not missed: the end-to-end unbinned test dispatches every toy through
+  it, but coverage does not follow child processes by default. This is the same
+  class of error as the Numba problem `scripts/run_coverage.sh` exists for, and
+  the more dangerous of the two: the Numba figure was absurd enough to force a
+  second look, whereas a plausible 62% instead invites someone to write tests
+  for code that is already covered. Note that `concurrency` *replaces*
+  coverage's default rather than adding to it, so both values are needed --
+  naming only `multiprocessing` stops tracing threads, and `toys.py`'s binned
+  path runs every toy through a `ThreadPoolExecutor`. Measured over
+  `test_adaptive_toys.py` + `test_unbinned_toys.py`, which between them exercise
+  both pools: 58% with the default, 61% with `multiprocessing` alone (a
+  different blind spot, not a smaller one), 70% with both. No new test was
+  written to produce any of that; the lines were always running.
 
 ## [0.10.0]
 

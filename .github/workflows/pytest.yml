@@ -13,6 +13,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Without this, a hung test sits until GitHub's 6-hour default. That is not
+    # hypothetical: a deadlock in a ProcessPoolExecutor test ran for two hours on the 3.9
+    # runner before being cancelled by hand, while 3.10, 3.11 and Coverage had all long
+    # since passed. The suite takes ~3 minutes, so 15 is generous and still fails fast.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

@@ -44,6 +44,15 @@ pyfc-config = "pyfc.generate_config:main"
 [tool.setuptools.packages.find]
 where = ["."]
 
+# Without this filter, setuptools treats every top-level directory in the repository as a
+# package to install.  The 0.10.0 wheel shipped `tests`, `scripts`, `docs` and
+# `xbranch_compare` as top-level packages, so `pip install PyFeldmanCousins` dropped a
+# top-level `tests` module into the user's site-packages, where it shadows or is shadowed
+# by any other project's `tests` -- a genuine, hard-to-diagnose collision that has nothing
+# to do with this package's purpose.  `pyfc*` also admits future subpackages
+# (`pyfc.something`) without needing to be revisited.
+include = ["pyfc*"]
+
 [tool.coverage.run]
 # `pyfc` is the import package; `PyFeldmanCousins` is only the distribution name, and
 # coverage measures imported source.  Naming it explicitly also keeps the measurement
@@ -59,6 +68,34 @@ source = ["pyfc"]
 # as covered the moment the function runs at all; only branch coverage reports whether the
 # other side was ever exercised.
 branch = true
+
+# Trace inside ProcessPoolExecutor workers.  `toys.py`'s unbinned path dispatches every toy
+# to `_worker_unbinned_toy` in a child process, and coverage does not follow subprocesses
+# by default -- so that function, and everything it calls, was reported as entirely missed
+# despite being exercised end to end by
+# `test_unbinned_toys.py::test_compute_fc_intervals_unbinned_end_to_end_produces_finite_intervals`.
+# Measured on that one file, this takes `toys.py` from 26% to 37% without a single new
+# test, because the lines were always running; they were merely invisible.
+#
+# This is the same class of error as the numba problem that `scripts/run_coverage.sh`
+# exists for, and it is the more dangerous of the two: a plausible-looking 62% invites
+# someone to write tests for code that is already covered, which adds maintenance burden
+# and moves no real risk.  `parallel` is required for `concurrency` to work (each process
+# writes its own data file); pytest-cov combines them automatically.
+#
+# BOTH values are required, and "thread" is not redundant with coverage's default.  Setting
+# `concurrency` at all REPLACES the default rather than adding to it, so naming only
+# "multiprocessing" silently stops tracing threads -- and `toys.py`'s *binned* path runs
+# every toy through a ThreadPoolExecutor, so that swap trades one blind spot for another.
+# Measured over `test_adaptive_toys.py` + `test_unbinned_toys.py`, which between them
+# exercise both pools:
+#
+#     thread (the default)      58%   -- loses the process worker
+#     multiprocessing           61%   -- loses the thread body
+#     multiprocessing, thread   70%   -- loses neither
+concurrency = ["multiprocessing", "thread"]
+parallel = true
+sigterm = true
 
 [tool.coverage.report]
 show_missing = true
