@@ -14,7 +14,7 @@ to either Thread or Process pools depending on Python's Global Interpreter Lock 
 limitations for the requested likelihood type.
 
 Created: v0.1.0 (July 24, 2026)
-Last modified: v0.10.0
+Last modified: v0.20.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 

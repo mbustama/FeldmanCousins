@@ -10,7 +10,7 @@
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://mbustama.github.io/FeldmanCousins/)
 [![PyPI](https://img.shields.io/pypi/v/PyFeldmanCousins.svg)](https://pypi.org/project/PyFeldmanCousins/)
 [![License: GPL v3+](https://img.shields.io/badge/License-GPLv3+-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 **PyFC** is a rigorous, high-performance frequentist statistical analysis framework for Python. It automates the construction of classical confidence intervals and regions using the unified Feldman-Cousins approach, seamlessly transitioning between one-sided upper limits and two-sided bounds while guaranteeing exact frequentist coverage. 
@@ -53,7 +53,7 @@ Designed for high-energy physics, astrophysics, and general parametric modeling,
 
 ### Requirements
 
-PyFC requires **Python 3.8+**. Core dependencies include:
+PyFC requires **Python 3.9+**. Core dependencies include:
 * `numpy >= 1.20`
 * `scipy`
 * `numba`

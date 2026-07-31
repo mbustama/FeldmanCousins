@@ -11,8 +11,29 @@ All notable changes to PyFC are documented here. This page mirrors the
 project's `CHANGELOG.md <https://github.com/mbustama/FeldmanCousins/blob/main/CHANGELOG.md>`_
 at the repository root.
 
-Unreleased
-----------
+0.20.0
+------
+
+A quality-and-packaging release rather than a feature one: no public API
+changes, and no change to any number PyFC computes. It adds test-coverage
+measurement, acts on the three real gaps that first measurement exposed, and
+fixes two defects and one packaging error that the work surfaced along the way.
+
+The coverage figure is the visible outcome (64% at the start of the work to 81%
+locally, higher in CI), but the more useful result is that the figure is now
+honest. Three separate mechanisms were causing code that runs on every test to
+be reported as untested -- Numba's ``@njit`` compilation, ``ProcessPoolExecutor``
+child processes, and ``ThreadPoolExecutor`` threads -- and each, taken at face
+value, would have sent someone to write tests for code that was already covered.
+The measurement is now arranged so that none of those lie, and the reasoning is
+recorded in ``pyproject.toml`` and ``scripts/run_coverage.sh`` so it does not
+have to be rediscovered. See :doc:`installation` for how to run it.
+
+Of the new tests, the ones worth knowing about are the self-discovering
+structural sweeps over the configuration layer, which check that every analysis
+parameter lines up across all four places it is written down. Every new test in
+this release was verified to fail against a deliberately broken version of the
+code before being kept.
 
 Added
 ~~~~~
@@ -126,6 +147,19 @@ Added
 
 Changed
 ~~~~~~~
+* **``requires-python`` narrowed from ``>=3.8`` to ``>=3.9``.** The 3.8 claim
+  was never checked by anything: CI has only ever run 3.9/3.10/3.11, and this
+  release is the first time a real 3.8 environment was built and the suite run
+  against it. The result is that 141 of 148 tests pass on 3.8, but ``toys.py``'s
+  ``ProcessPoolExecutor`` recovery path deadlocks -- it hangs indefinitely
+  instead of falling back to threads. That path is reachable by any user who
+  passes a lambda or a closure, so it is not an obscure corner. It is also not
+  fixable from here: CPython rewrote ``concurrent.futures.process`` in 3.9
+  (``_ExecutorManagerThread``, plus the ``cancel_futures`` argument to
+  ``shutdown``), and 3.8's legacy queue-management implementation is what hangs
+  -- the same non-blocking shutdown that fixes 3.9 does not rescue it. With 3.8
+  also end-of-life since October 2024, the declaration now matches what is
+  actually tested. Users on 3.8 keep resolving to 0.10.0.
 * **CI now runs on ``dev`` and ``dev-*`` branches, not only ``main``.** The
   previous filter meant a topic branch got no CI signal at all until a pull
   request was opened, which is the point at which a failure is most expensive to

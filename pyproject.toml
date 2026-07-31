@@ -4,10 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "PyFeldmanCousins"
-version = "0.10.0"
+version = "0.20.0"
 description = "A modular framework for Feldman-Cousins confidence interval calculations."
 readme = "README.md"
-requires-python = ">=3.8"
+# 3.9, not 3.8. The declaration used to say 3.8 but nothing ever checked it: CI has only
+# ever run 3.9/3.10/3.11. Measured on a real 3.8 environment, 141 of the 148 tests pass --
+# but `toys.py`'s ProcessPoolExecutor recovery path deadlocks, hanging indefinitely rather
+# than falling back to threads.
+#
+# That one is not fixable from here. CPython rewrote `concurrent.futures.process` in 3.9
+# (`_ExecutorManagerThread`, and the `cancel_futures` argument to `shutdown`); 3.8's
+# legacy queue-management implementation is what hangs when a pool breaks, and the same
+# non-blocking shutdown that fixes 3.9 does not rescue it. Since the path is reachable by
+# any user who passes a lambda or a closure, and 3.8 has been end-of-life since October
+# 2024, the honest declaration is the one CI actually tests.
+requires-python = ">=3.9"
 license = {text = "GPL-3.0-or-later"}
 authors = [
     {name = "Mauricio Bustamante", email = "mbustamante@gmail.com"}

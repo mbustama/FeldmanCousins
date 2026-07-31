@@ -3,7 +3,7 @@ Installation & Requirements
 
 Requirements
 ------------
-PyFC requires **Python 3.8+**. Core dependencies include:
+PyFC requires **Python 3.9+**. Core dependencies include:
 
 * ``numpy >= 1.20``
 * ``scipy``
