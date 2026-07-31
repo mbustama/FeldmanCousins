@@ -8,7 +8,6 @@ It implements expected rate calculations, standard Poisson and finite-Monte Carl
 optimizations, and parametric bootstrap pseudo-experiment (toy) generation.
 
 Created: v0.1.0 (July 24, 2026)
-Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 

@@ -31,7 +31,6 @@ Interactive Instructions:
   (e.g., 0.68, 0.90, 0.95).
 
 Created: v0.1.0 (July 24, 2026)
-Last modified: v0.20.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 

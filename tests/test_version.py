@@ -11,6 +11,12 @@ is a copy that will eventually disagree with it.
 distribution's metadata, and `conf.py` imports that rather than repeating the lookup. The
 tests below pin all three links in that chain, because the failure mode is silent in every
 one of them -- a stale version does not crash anything, it just misinforms.
+
+The module docstrings' `Last modified: vX.Y.Z` markers are gone for the same reason. They
+were hand-maintained, nothing could derive them, and they had already drifted: after 0.20.0
+was prepared, seven of the nine still read v0.10.0, with no way for a reader to tell whether
+that meant "genuinely unchanged since" or "somebody forgot to update it". Git records when a
+file last changed, accurately and without anyone remembering to.
 """
 
 import re
@@ -118,25 +124,30 @@ def test_docs_take_their_version_from_the_package():
 
 
 @needs_source_tree
-def test_no_module_claims_to_be_newer_than_the_release():
+def test_no_module_hardcodes_a_version():
     """
-    Each module carries a `Last modified: vX.Y.Z` line. Those are hand-maintained
-    provenance, not the package version, and are deliberately left alone when a module did
-    not change -- but none of them can legitimately be *ahead* of the declared version,
-    which is what a bump applied to a docstring but not to `pyproject.toml` would look
-    like.
-    """
-    declared = tuple(int(p) for p in _declared_version().split("."))
+    No module may reintroduce a hand-written version string in its docstring.
 
-    offenders = []
-    for module in sorted((REPO_ROOT / "pyfc").glob("*.py")):
-        for match in re.finditer(r"^Last modified: v(\d+)\.(\d+)\.(\d+)",
-                                 module.read_text(), flags=re.MULTILINE):
-            marker = tuple(int(g) for g in match.groups())
-            if marker > declared:
-                offenders.append(f"  {module.name}: v{'.'.join(map(str, marker))}")
+    Each one used to carry a `Last modified: vX.Y.Z` line. They were provenance rather than
+    the package version, so nothing could derive them, and being hand-maintained they drifted
+    exactly as a duplicated number always does -- seven of the nine still said v0.10.0 after
+    0.20.0 was prepared, and no reader could tell whether that meant "unchanged since" or
+    "somebody forgot". They were removed; `pyfc.__version__` is the one version any caller
+    needs, and git already records when a file last changed, accurately and for free.
+
+    This guards the removal rather than the old convention: the markers are gone, and this
+    fails if one comes back.
+    """
+    pattern = re.compile(r"^(Last modified|Version):\s*v?\d+\.\d+", flags=re.MULTILINE)
+
+    offenders = [
+        f"  {module.name}: {pattern.search(module.read_text()).group(0)!r}"
+        for module in sorted((REPO_ROOT / "pyfc").glob("*.py"))
+        if pattern.search(module.read_text())
+    ]
 
     assert not offenders, (
-        f"modules claim a 'Last modified' version newer than pyproject.toml's "
-        f"{_declared_version()}:\n" + "\n".join(offenders)
+        "module docstrings carry hand-written version strings, which drift silently "
+        "because nothing checks them:\n" + "\n".join(offenders)
+        + "\n\nUse pyfc.__version__, which is read from the distribution metadata."
     )

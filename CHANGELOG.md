@@ -169,12 +169,23 @@ code before being kept.
   `tests/test_version.py` pins the whole chain -- that the attribute exists and
   is exported, that it is not the uninstalled fallback, that it agrees with
   `pyproject.toml`, that the docs take their version from the package, and that
-  no module's hand-maintained `Last modified:` marker claims to be newer than the
-  release. All five links fail silently when broken, which is how the docs came
-  to advertise 0.1.0 for nine releases.
+  no module docstring reintroduces a hand-written version string. All five links
+  fail silently when broken, which is how the docs came to advertise 0.1.0 for
+  nine releases.
 
 ### Changed
 
+- **The `Last modified: vX.Y.Z` line is gone from every module docstring.** It
+  was hand-maintained and nothing could derive it, so it drifted exactly as a
+  duplicated number always does: when 0.20.0 was prepared, seven of the nine
+  modules still read `v0.10.0`, and no reader could tell whether that meant
+  "genuinely unchanged since then" or "somebody forgot to update it" -- which
+  makes the annotation worse than absent, because it invites a conclusion it
+  cannot support. Git already records when a file last changed, accurately and
+  without anyone having to remember. `pyfc.__version__` is the one version a
+  caller needs, and a test now fails if a hand-written version string reappears
+  in a module docstring. The `Created:` lines stay: those are fixed historical
+  facts that cannot go stale.
 - **`requires-python` narrowed from `>=3.8` to `>=3.9`.** The 3.8 claim was
   never checked by anything: CI has only ever run 3.9/3.10/3.11, and this
   release is the first time a real 3.8 environment was built and the suite run

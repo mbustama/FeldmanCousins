@@ -7,7 +7,6 @@ It visualizes both the 1D Profile Likelihood Ratios (with integrated Monte Carlo
 thresholds) and the 2D joint confidence contours using matplotlib.
 
 Created: v0.1.0 (July 24, 2026)
-Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 
