@@ -11,7 +11,6 @@ statistical, algorithmic, and computational parameters that govern the
 underlying profile likelihood ratio tests and Monte Carlo toy generation.
 
 Created: v0.1.0 (July 24, 2026)
-Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 

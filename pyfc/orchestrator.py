@@ -23,7 +23,6 @@ For example, to run an unbinned analysis with 500 toys using the SciPy optimizer
     $ python orchestrator.py --likelihood_type unbinned --n_toys 500 --strategy scipy
 
 Created: v0.1.0 (July 24, 2026)
-Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 

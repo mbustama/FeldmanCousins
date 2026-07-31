@@ -12,7 +12,6 @@ likelihood, which serve as robust alternatives to gradient-based minimizers
 when the likelihood surface is highly irregular.
 
 Created: v0.1.0 (July 24, 2026)
-Last modified: v0.10.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
 This file was released as part of the PyFC code, stored at 
