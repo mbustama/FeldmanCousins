@@ -41,6 +41,7 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
     'sphinxcontrib.bibtex',
+    'myst_parser',              # Lets changelog.rst .. include:: the root CHANGELOG.md
 ]
 
 # Mock heavy scientific imports so Sphinx doesn't crash if they aren't 

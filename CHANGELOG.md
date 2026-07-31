@@ -1,11 +1,10 @@
 # Changelog
 
 <!--
-This file is mirrored by hand into docs/source/changelog.rst, and CI
-(.github/workflows/changelog-sync.yml) checks the two stay structurally in
-sync on every change. See scripts/check_changelog_sync.py's module
-docstring for exactly what "in sync" means (and doesn't) before editing
-either file.
+This file is the single source of truth for the version history.
+docs/source/changelog.rst renders it directly via myst-parser, so editing
+this file is all that is needed -- there is no RST mirror to keep in step,
+and nothing to run afterwards.
 -->
 
 All notable changes to PyFC are documented in this file.
@@ -202,9 +201,33 @@ code before being kept.
   unserialisable objects, and a real 2D run is read back from disk and
   re-dumped through a stock `json.dump` to prove nothing NumPy-typed survived.
   `orchestrator.py` 84% -> 89%.
+- **A Downloads badge**, in `README.md` and on the documentation homepage,
+  matching the placement used in the author's Magnus project: between the
+  Python-version and ruff badges. It reports PyPI installs of
+  `PyFeldmanCousins` via pepy.tech. Note the figure it shows counts mirrors and
+  CI traffic alongside real users, so it is an upper bound rather than a
+  readership number, and until 0.20.0 ships it reflects 0.10.0 alone.
 
 ### Changed
 
+- **`docs/source/changelog.rst` now renders this file directly instead of
+  mirroring it by hand.** It was a 1037-line RST duplicate of these 988 lines,
+  kept in step manually and policed by `scripts/check_changelog_sync.py` and a
+  dedicated CI workflow. The check worked -- it caught real drift twice while
+  0.20.0 was being written -- but it could only ever *detect* divergence, never
+  prevent it, and every entry had to be written twice. The page is now eight
+  lines that `.. include::` the Markdown through `myst-parser`, so this file is
+  the single source and there is nothing to keep in step and nothing to run
+  afterwards. `scripts/check_changelog_sync.py` and
+  `.github/workflows/changelog-sync.yml` are removed as obsolete, and
+  `myst-parser` joins the `docs` extra.
+  The trade is presentational and was checked entry by entry before making it:
+  six `.. warning::` admonitions become inline bold text and fifteen
+  `:doc:`/`:ref:` cross-references become plain prose. No *information* is lost
+  -- every one of those passages already existed in this file, since the sync
+  check only ever compared each bullet's first four words and the RST's extra
+  wording was rendering rather than content. The docs build emits exactly the
+  same 28 warnings as before, none of them from the changelog page.
 - **The `Last modified: vX.Y.Z` line is gone from every module docstring.** It
   was hand-maintained and nothing could derive it, so it drifted exactly as a
   duplicated number always does: when 0.20.0 was prepared, seven of the nine

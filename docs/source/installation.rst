@@ -114,7 +114,6 @@ The project structure is organized modularly to separate analytical likelihood m
    FeldmanCousins/
    ├── .github/
    │   └── workflows/
-   │       ├── changelog-sync.yml       # CI check that CHANGELOG.md and changelog.rst stay in sync
    │       ├── lint.yml                 # CI linting and formatting pipeline
    │       ├── pages.yml                # GitHub Pages deployment for documentation
    │       ├── publish.yml              # PyPI (OIDC) automated publishing workflow
@@ -130,7 +129,7 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── source/
    │   │   ├── _static/
    │   │   │   └── pyfc_logo.png        # Project branding asset
-   │   │   ├── changelog.rst            # Rendered changelog page (mirrors root CHANGELOG.md)
+   │   │   ├── changelog.rst            # Renders the root CHANGELOG.md via myst-parser
    │   │   ├── conf.py                  # Sphinx build configuration
    │   │   ├── configuration.rst        # Interactive CLI tool and parameter definitions
    │   │   ├── index.rst                # Master documentation page with high-level overview and table of contents
@@ -164,7 +163,6 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── toys.py                      # Multiprocessing engines for MC pseudo-experiment generation
    │   └── unbinned.py                  # Extended Unbinned Maximum Likelihood (EUML) formulations
    ├── scripts/
-   │   ├── check_changelog_sync.py      # Structural sync checker for CHANGELOG.md <-> changelog.rst
    │   └── run_coverage.sh              # Coverage measurement, splitting the suite around Numba's JIT
    ├── tests/                           # Unit and integration test suite
    │   ├── test_adaptive_toys.py                        # Tests for the validated adaptive_toys/toy_batch_size early-stopping behavior
