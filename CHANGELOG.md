@@ -10,6 +10,79 @@ either file.
 
 All notable changes to PyFC are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Test-coverage measurement.** `pytest-cov` joins the `test` and `dev`
+  extras, the settings live in `[tool.coverage.run]` in `pyproject.toml` so a
+  local run measures exactly what CI measures, and a separate Coverage job in
+  `pytest.yml` reports the figure on each run's summary page and uploads
+  `coverage.xml` as an artifact. Branch coverage is enabled: a line-coverage
+  number flatters this codebase, because the orchestrator is a dispatch machine
+  whose failure modes are branches only ever taken one way -- `strategy="grid"`
+  vs `"adaptive"`, a resumed checkpoint vs a fresh run, the
+  disconnected-interval reporting path, the `if ultranest is None` guards --
+  and line coverage counts all of those as covered the moment the function runs
+  at all. The job reports rather than gates: there is deliberately no
+  `--cov-fail-under`, since a threshold invented before the first measurement
+  either sits below the real figure and never fires, or above it and blocks
+  unrelated work. It also carries a Codecov upload step gated on a
+  `CODECOV_TOKEN` secret, skipped entirely when that secret is absent so the
+  workflow stays safe to run in a fork; the secret now exists, so uploads are
+  live, the coverage badge resolves, and Codecov comments per-PR diff coverage.
+- **`scripts/run_coverage.sh`, which splits the suite around Numba's JIT.**
+  `coverage.py` traces Python bytecode, and Numba executes none: it compiles
+  `@njit` functions to machine code, so every line inside `binned.py` -- six
+  compiled functions including `calc_nll`, the NLL everything else is built on
+  -- is reported as missed no matter how hard the suite hits it. Measured over
+  the three test files that target `calc_nll` directly, `binned.py` reports
+  **10%** with the JIT on and **90%** under `NUMBA_DISABLE_JIT=1`; publishing
+  the former would be actively misleading about the part of PyFC that most
+  needs to be trustworthy. Disabling the JIT wholesale is not an option either,
+  since `strategy="grid"`'s `@njit(parallel=True)` toy generators degrade into
+  plain Python loops and the suite then fails to finish in any reasonable time.
+  The script therefore runs the pathological files with the JIT on, everything
+  else with it off, and lets `coverage` combine the halves. The classification
+  lives in the script rather than in the workflow so that there is exactly one
+  place it can go stale, and its failure mode is benign: a newly added test file
+  falls into the JIT-disabled half automatically, so it is measured correctly
+  and at worst runs slowly, never silently skipped.
+- **Structural and behavioural tests for the configuration layer**, closing what
+  that first coverage run found: `config.py` sat at 10% and
+  `generate_config.py` at 6%, meaning essentially nothing tested the CLI/JSON
+  config layer -- a layer edited on almost every release, whose correctness had
+  until now been established by running the CLI by hand. They take those two
+  modules to 100% and 98% respectively, and the package as a whole from 66% to
+  75%. The structural sweeps
+  check that every analysis parameter lines up across all four places it is
+  written down: the hardcoded defaults, the `argparse` flags, the interactive
+  wizard's questions, and `compute_fc_intervals`' own signature and defaults.
+  They are self-discovering -- each derives its subjects from the code rather
+  than from a hardcoded list -- so a parameter added later is swept without
+  anyone remembering to extend a list, which is the only reason they would have
+  caught the two real v0.10.0 bugs they are modeled on (`scipy_method` reaching
+  `parse_arguments` but never being added to the wizard, and a wizard default
+  disagreeing with the one `compute_fc_intervals` actually uses). Alongside
+  them, the layer's stated `Defaults -> JSON -> CLI` precedence chain is now
+  tested in both directions, as is `get_input`'s rejection of a bad cast, a
+  value outside `choices`, and a failed validator. Every one of these tests was
+  verified to fail against a deliberately broken version of the code before
+  being kept.
+
+### Changed
+
+- **CI now runs on `dev` and `dev-*` branches, not only `main`.** The previous
+  filter meant a topic branch got no CI signal at all until a pull request was
+  opened, which is the point at which a failure is most expensive to discover.
+- **The Coverage job installs `.[test,optimizers]`** while the Python-version
+  matrix deliberately stays on `.[test]` alone. Without `ultranest` the three
+  `*_ultranest` fit functions count as missed and the reported figure for
+  `optimizers.py` understates its real coverage, which invites someone to go and
+  "fix" coverage that is not actually missing; but that `ultranest` is optional
+  is a promise PyFC makes to its users, and the matrix is where that promise is
+  checked.
+
 ## [0.10.0]
 
 Hardens the optimizer/likelihood layer against joint (non-box) parameter

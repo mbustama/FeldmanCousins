@@ -28,8 +28,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest"]
-dev = ["pytest", "twine", "build"]
+test = ["pytest", "pytest-cov"]
+dev = ["pytest", "pytest-cov", "twine", "build"]
 docs = ["sphinx", "sphinx-rtd-theme", "sphinxcontrib-bibtex"]
 optimizers = ["ultranest", "tqdm"]
 
@@ -43,3 +43,34 @@ pyfc-config = "pyfc.generate_config:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+[tool.coverage.run]
+# `pyfc` is the import package; `PyFeldmanCousins` is only the distribution name, and
+# coverage measures imported source.  Naming it explicitly also keeps the measurement
+# scoped to the library itself: `tests/` and `xbranch_compare/` sit at the repository
+# root next to `pyfc/`, and neither is code whose coverage is meaningful.
+source = ["pyfc"]
+
+# Branch coverage, not just line coverage.  Line coverage flatters this codebase: the
+# orchestrator is a dispatch machine, and most of what can go wrong in it is a branch that
+# is only ever taken one way -- `strategy="grid"` vs `"adaptive"`, a resumed checkpoint vs
+# a fresh run, the disconnected-interval reporting path, and the `if ultranest is None`
+# guards around every optional-dependency call site.  A line-coverage number counts those
+# as covered the moment the function runs at all; only branch coverage reports whether the
+# other side was ever exercised.
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+
+# Deliberately no `fail_under`.  A threshold picked before the first measurement either
+# sits below the real number and never fires, or above it and blocks unrelated work; the
+# number to pin is one the suite has actually been held to for a while.
+exclude_also = [
+    # Import-time guards for running a module as a script; unreachable under pytest.  When
+    # the matched line introduces a block, coverage excludes the whole block, which is what
+    # matters here: `orchestrator.py`'s demo block runs from line 931 to end of file, 181
+    # lines, ~16% of the module.  Counting it would report a permanent miss that no test
+    # can ever close, and one large enough to drown out the gaps that are real.
+    "if __name__ == .__main__.:",
+]

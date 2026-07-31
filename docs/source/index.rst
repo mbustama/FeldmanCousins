@@ -11,6 +11,10 @@ PyFC: A Python Framework for Feldman-Cousins Confidence Intervals
    :target: https://github.com/mbustama/FeldmanCousins/actions/workflows/lint.yml
    :alt: Code Quality
 
+.. image:: https://codecov.io/gh/mbustama/FeldmanCousins/branch/main/graph/badge.svg
+   :target: https://codecov.io/gh/mbustama/FeldmanCousins
+   :alt: Coverage
+
 .. image:: https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg
    :target: https://mbustama.github.io/FeldmanCousins/
    :alt: Documentation
