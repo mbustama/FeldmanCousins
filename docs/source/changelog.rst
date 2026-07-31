@@ -142,16 +142,22 @@ Fixed
   the other names are importable. The ``pyfc-config`` entry point and the
   bundled licence are unaffected, and the sdist still carries ``tests/`` so a
   source checkout can run the suite.
-* **Coverage now traces inside ``ProcessPoolExecutor`` workers.** ``toys.py``
-  reported 62% with ``_worker_unbinned_toy`` counted as entirely missed. It was
-  not missed: the end-to-end unbinned test dispatches every toy through it, but
-  coverage does not follow child processes by default. An A/B on the same
-  single test file, changing nothing but the setting, moved ``toys.py`` from
-  26% to 37% without a single new test being written. This is the same class of
-  error as the Numba problem ``scripts/run_coverage.sh`` exists for, and the
-  more dangerous of the two: the Numba figure was absurd enough to force a
-  second look, whereas a plausible 62% instead invites someone to write tests
-  for code that is already covered.
+* **Coverage now traces inside ``ProcessPoolExecutor`` workers and threads.**
+  ``toys.py`` reported 62% with ``_worker_unbinned_toy`` counted as entirely
+  missed. It was not missed: the end-to-end unbinned test dispatches every toy
+  through it, but coverage does not follow child processes by default. This is
+  the same class of error as the Numba problem ``scripts/run_coverage.sh``
+  exists for, and the more dangerous of the two: the Numba figure was absurd
+  enough to force a second look, whereas a plausible 62% instead invites someone
+  to write tests for code that is already covered. Note that ``concurrency``
+  *replaces* coverage's default rather than adding to it, so both values are
+  needed -- naming only ``multiprocessing`` stops tracing threads, and
+  ``toys.py``'s binned path runs every toy through a ``ThreadPoolExecutor``.
+  Measured over ``test_adaptive_toys.py`` + ``test_unbinned_toys.py``, which
+  between them exercise both pools: 58% with the default, 61% with
+  ``multiprocessing`` alone (a different blind spot, not a smaller one), 70%
+  with both. No new test was written to produce any of that; the lines were
+  always running.
 
 0.10.0
 ------
