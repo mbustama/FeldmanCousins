@@ -82,7 +82,18 @@ branch = true
 # someone to write tests for code that is already covered, which adds maintenance burden
 # and moves no real risk.  `parallel` is required for `concurrency` to work (each process
 # writes its own data file); pytest-cov combines them automatically.
-concurrency = ["multiprocessing"]
+#
+# BOTH values are required, and "thread" is not redundant with coverage's default.  Setting
+# `concurrency` at all REPLACES the default rather than adding to it, so naming only
+# "multiprocessing" silently stops tracing threads -- and `toys.py`'s *binned* path runs
+# every toy through a ThreadPoolExecutor, so that swap trades one blind spot for another.
+# Measured over `test_adaptive_toys.py` + `test_unbinned_toys.py`, which between them
+# exercise both pools:
+#
+#     thread (the default)      58%   -- loses the process worker
+#     multiprocessing           61%   -- loses the thread body
+#     multiprocessing, thread   70%   -- loses neither
+concurrency = ["multiprocessing", "thread"]
 parallel = true
 sigterm = true
 
