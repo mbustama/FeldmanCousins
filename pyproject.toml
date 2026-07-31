@@ -69,6 +69,22 @@ source = ["pyfc"]
 # other side was ever exercised.
 branch = true
 
+# Trace inside ProcessPoolExecutor workers.  `toys.py`'s unbinned path dispatches every toy
+# to `_worker_unbinned_toy` in a child process, and coverage does not follow subprocesses
+# by default -- so that function, and everything it calls, was reported as entirely missed
+# despite being exercised end to end by
+# `test_unbinned_toys.py::test_compute_fc_intervals_unbinned_end_to_end_produces_finite_intervals`.
+# Measured on that one file, this takes `toys.py` from 26% to 37% without a single new
+# test, because the lines were always running; they were merely invisible.
+#
+# This is the same class of error as the numba problem that `scripts/run_coverage.sh`
+# exists for, and it is the more dangerous of the two: a plausible-looking 62% invites
+# someone to write tests for code that is already covered, which adds maintenance burden
+# and moves no real risk.  `parallel` is required for `concurrency` to work (each process
+# writes its own data file); pytest-cov combines them automatically.
+concurrency = ["multiprocessing"]
+parallel = true
+sigterm = true
 
 [tool.coverage.report]
 show_missing = true
