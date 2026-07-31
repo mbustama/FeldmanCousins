@@ -165,6 +165,7 @@ The project structure is organized modularly to separate analytical likelihood m
    ├── scripts/
    │   └── run_coverage.sh              # Coverage measurement, splitting the suite around Numba's JIT
    ├── tests/                           # Unit and integration test suite
+   │   ├── test_2d_resume_and_sparsify.py             # Tests for 2D checkpoint resume and sparsify_grid's no-SciPy fallback
    │   ├── test_adaptive_toys.py                        # Tests for the validated adaptive_toys/toy_batch_size early-stopping behavior
    │   ├── test_bounds_func.py                          # Tests for the bounds_func parameter-dependent bounds mechanism
    │   ├── test_checkpoint_resume.py                    # Tests for the real warm_start/checkpoint-resume machinery, simulating a genuine mid-run interruption
