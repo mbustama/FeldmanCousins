@@ -41,7 +41,7 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest", "pytest-cov"]
 dev = ["pytest", "pytest-cov", "twine", "build"]
-docs = ["sphinx", "sphinx-rtd-theme", "sphinxcontrib-bibtex"]
+docs = ["sphinx", "sphinx-rtd-theme", "sphinxcontrib-bibtex", "myst-parser"]
 optimizers = ["ultranest", "tqdm"]
 
 [project.urls]
