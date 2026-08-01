@@ -229,6 +229,18 @@ code before being kept.
 
 ### Changed
 
+- **`orchestrator.py`'s 13 `E701` lint findings are fixed**, so `ruff check`
+  now reports zero. They were `if condition: statement` one-liners in the
+  logging helper, the `S_sumw2`/`B_sumw2` defaulting, and the checkpoint-restore
+  block -- style rather than defects, but they were also the only findings
+  standing between the project and a clean lint signal, and `lint.yml` runs
+  `ruff check` with `continue-on-error: true`, so they could never fail a build
+  and were never going to be fixed by accident. Verified purely cosmetic rather
+  than assumed: the file's abstract syntax tree is byte-identical before and
+  after, the suite passes, and the cross-branch numerical harness reports zero
+  mismatches. `ruff format --check` is untouched and still reports 49 files, as
+  it did before -- that is a separate, much larger decision about reformatting a
+  codebase that predates the formatter.
 - **Releases are gated on the test suite.** `publish.yml` triggers on
   `release: published` and went straight to building and uploading; `pytest.yml`
   runs on pushes and pull requests, not on releases, so a release cut from a
