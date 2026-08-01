@@ -505,8 +505,10 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
         run_logger.addHandler(fh)
         
     def log_print(msg):
-        if verbose > 0: print(msg)
-        if save_log: run_logger.info(msg)
+        if verbose > 0:
+            print(msg)
+        if save_log:
+            run_logger.info(msg)
 
     # Coerce input configurations
     if isinstance(cl, (float, int)):
@@ -528,8 +530,10 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
         
     # Setup likelihood variances for Finite MC
     if likelihood_type == "binned":
-        if S_sumw2 is None: S_sumw2 = np.zeros_like(data)
-        if B_sumw2 is None: B_sumw2 = np.zeros_like(data)
+        if S_sumw2 is None:
+            S_sumw2 = np.zeros_like(data)
+        if B_sumw2 is None:
+            B_sumw2 = np.zeros_like(data)
     else:
         S_sumw2, B_sumw2 = None, None
 
@@ -582,27 +586,36 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
                 
             if grids_match:
                 log_print(f"Grids verified identically. Resuming checkpoint from {ckpt_path}.")
-                if "best_fit" in ckpt: results["best_fit"] = ckpt["best_fit"]
-                if "data_uncond_nll" in ckpt: results["data_uncond_nll"] = float(ckpt["data_uncond_nll"])
+                if "best_fit" in ckpt:
+                    results["best_fit"] = ckpt["best_fit"]
+                if "data_uncond_nll" in ckpt:
+                    results["data_uncond_nll"] = float(ckpt["data_uncond_nll"])
                 
                 # Restore 1D tracking arrays
                 if compute_1D_intervals:
                     for p_idx in range(n_params):
-                        if f"1d_t_data_p{p_idx+1}" in ckpt: results[f"1d_t_data_p{p_idx+1}"] = ckpt[f"1d_t_data_p{p_idx+1}"]
-                        if f"1d_prof_params_p{p_idx+1}" in ckpt: results[f"1d_prof_params_p{p_idx+1}"] = ckpt[f"1d_prof_params_p{p_idx+1}"]
+                        if f"1d_t_data_p{p_idx+1}" in ckpt:
+                            results[f"1d_t_data_p{p_idx+1}"] = ckpt[f"1d_t_data_p{p_idx+1}"]
+                        if f"1d_prof_params_p{p_idx+1}" in ckpt:
+                            results[f"1d_prof_params_p{p_idx+1}"] = ckpt[f"1d_prof_params_p{p_idx+1}"]
                         for c in cl:
-                            if f"1d_t_critical_p{p_idx+1}_{c}" in ckpt: results[f"1d_t_critical_p{p_idx+1}"][c] = ckpt[f"1d_t_critical_p{p_idx+1}_{c}"]
-                            if f"1d_accepted_p{p_idx+1}_{c}" in ckpt: results[f"1d_accepted_p{p_idx+1}"][c] = ckpt[f"1d_accepted_p{p_idx+1}_{c}"]
+                            if f"1d_t_critical_p{p_idx+1}_{c}" in ckpt:
+                                results[f"1d_t_critical_p{p_idx+1}"][c] = ckpt[f"1d_t_critical_p{p_idx+1}_{c}"]
+                            if f"1d_accepted_p{p_idx+1}_{c}" in ckpt:
+                                results[f"1d_accepted_p{p_idx+1}"][c] = ckpt[f"1d_accepted_p{p_idx+1}_{c}"]
                             
                 # Restore 2D tracking arrays
                 if compute_2D_intervals and n_params > 1:
                     pairs = list(itertools.combinations(range(n_params), 2))
                     for fix_A, fix_B in pairs:
                         pair_name = f"p{fix_A+1}p{fix_B+1}"
-                        if f"2d_t_data_{pair_name}" in ckpt: results[f"2d_t_data_{pair_name}"] = ckpt[f"2d_t_data_{pair_name}"]
+                        if f"2d_t_data_{pair_name}" in ckpt:
+                            results[f"2d_t_data_{pair_name}"] = ckpt[f"2d_t_data_{pair_name}"]
                         for c in cl:
-                            if f"2d_t_critical_{pair_name}_{c}" in ckpt: results[f"2d_t_critical_{pair_name}"][c] = ckpt[f"2d_t_critical_{pair_name}_{c}"]
-                            if f"2d_accepted_{pair_name}_{c}" in ckpt: results[f"2d_accepted_{pair_name}"][c] = ckpt[f"2d_accepted_{pair_name}_{c}"]
+                            if f"2d_t_critical_{pair_name}_{c}" in ckpt:
+                                results[f"2d_t_critical_{pair_name}"][c] = ckpt[f"2d_t_critical_{pair_name}_{c}"]
+                            if f"2d_accepted_{pair_name}_{c}" in ckpt:
+                                results[f"2d_accepted_{pair_name}"][c] = ckpt[f"2d_accepted_{pair_name}_{c}"]
             else:
                 log_print("Parameter grids strictly conflict with checkpoint environment. Initiating fresh start.")
         except Exception as e:
