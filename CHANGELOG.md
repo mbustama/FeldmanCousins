@@ -229,6 +229,30 @@ code before being kept.
 
 ### Changed
 
+- **Releases are gated on the test suite.** `publish.yml` triggers on
+  `release: published` and went straight to building and uploading; `pytest.yml`
+  runs on pushes and pull requests, not on releases, so a release cut from a
+  commit with a failing suite reached PyPI exactly as readily as a green one.
+  A `test` job now runs the full matrix on the commit being published and
+  `build-and-publish` carries `needs: test`. It repeats the matrix rather than
+  linking to `pytest.yml` via `workflow_run`, which would tie publication to
+  whatever that workflow last did on some branch instead of to the commit
+  actually going out. This matters more than a normal CI gate because the action
+  is irreversible: a PyPI release can be yanked but its version number can never
+  be reused, so a bad upload is corrected only by burning the number.
+- **Seven README links now point at absolute GitHub URLs.** The example-notebook
+  links were repository-relative, which renders correctly on GitHub and 404s on
+  PyPI, where there is no file tree beside the description. Verified against the
+  built wheel's metadata rather than the source file: the published description
+  now contains no repository-relative links at all. Badges and the logo were
+  already absolute.
+- **PyPI classifiers list the Python versions actually tested.** The package
+  advertised only a generic `Programming Language :: Python :: 3`, so it did not
+  appear under any version filter on PyPI despite CI running three. Added 3.9,
+  3.10 and 3.11 -- and deliberately not 3.12, which works locally but that
+  nothing tests; advertising an untested interpreter is the mistake
+  `requires-python = ">=3.8"` already made once. Also added
+  `Operating System :: OS Independent`.
 - **`docs/source/changelog.rst` now renders this file directly instead of
   mirroring it by hand.** It was a 1037-line RST duplicate of these 988 lines,
   kept in step manually and policed by `scripts/check_changelog_sync.py` and a

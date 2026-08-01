@@ -23,11 +23,20 @@ license = {text = "GPL-3.0-or-later"}
 authors = [
     {name = "Mauricio Bustamante", email = "mbustamante@gmail.com"}
 ]
+# The per-version Python classifiers list 3.9/3.10/3.11 and stop there, deliberately:
+# those are exactly the versions the CI matrix runs. 3.12 works locally and would very
+# likely be fine, but advertising an interpreter nothing tests is the mistake that
+# `requires-python = ">=3.8"` already made once -- 3.8 was claimed for the life of the
+# project and turned out to deadlock. Add a version here when CI starts running it.
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Scientific/Engineering :: Mathematics"
 ]
