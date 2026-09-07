@@ -52,6 +52,14 @@ pyfc.plotting module
    :undoc-members:
    :show-inheritance:
 
+pyfc.priors module
+------------------
+
+.. automodule:: pyfc.priors
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 pyfc.toys module
 ----------------
 
