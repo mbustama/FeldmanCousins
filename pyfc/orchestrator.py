@@ -564,7 +564,11 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
                 "    from numba import njit\n"
                 "    @njit(fastmath=True, nogil=True)\n"
                 "    def my_penalty(params):\n"
-                "        return 0.5 * ((params[0] - 1.0) / 0.05) ** 2\n"
+                # No 0.5 factor: PyFC's NLL is -2lnL, so a width-s Gaussian contributes
+                # ((x-c)/s)**2. An example carrying the -lnL form would teach the very
+                # mistake the docstring warns about, in the one place a confused user is
+                # guaranteed to be reading.
+                "        return ((params[0] - 1.0) / 0.05) ** 2\n"
                 "Alternatively use strategy='scipy', 'ultranest' or 'hybrid', which accept "
                 "any Python callable."
             )

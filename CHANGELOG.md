@@ -194,6 +194,27 @@ code before being kept.
   neither `njit` nor the offending argument. Callers who do not use the feature
   pay ~5%, not the ~170% a jitted no-op would have cost, because numba compiles
   the `is not None` branch away per specialisation.
+
+- **`examples/08_pyfc_gaussian_priors_tutorial.ipynb`**, the runnable
+  counterpart to the entry above. It opens with the units check as a *numerical*
+  demonstration rather than an assertion -- a lone parameter whose predicted rate
+  ignores it, so the likelihood is the prior alone and the test statistic has the
+  closed form `((x - c)/s)**2`; the correct penalty lands on 1.0, 4.0, 9.0 at one,
+  two and three sigma, and the `-ln L` form lands on exactly half of each, which
+  is what the `sqrt(2)` weakening looks like from the other side. It then runs the
+  full construction twice on identical data, once with a signal/background
+  degeneracy left free and once with a 3% prior on the background, and shows the
+  observed statistic against the toy-derived critical value for both -- the
+  critical values differ between the runs, which is the visible consequence of the
+  penalty reaching the toys. The remaining sections cover the vectorised
+  many-priors form, a one-sided penalty on a derived sum, and the `strategy="grid"`
+  guard firing on a plain Python callable. Two notes on what it does *not* claim:
+  the toy is deliberately small, so the effect shown is the upper limit on the
+  signal strength halving rather than the total loss of a limit described above,
+  and the notebook says so; and neither run excludes zero signal, which is correct
+  for data generated at the no-signal expectation. `docs/source/tutorials.rst` and
+  the README table gain a row for it, paired with notebook `06` as the soft and
+  hard halves of the same constraint story.
 - **`pyfc.__version__`**, read from the installed distribution's metadata rather
   than written down a second time. `pyproject.toml` is the single source: the
   package exposes it, and `docs/source/conf.py` imports that value instead of

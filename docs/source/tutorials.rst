@@ -1,8 +1,8 @@
 Tutorial Notebooks
 ===================
 
-The ``examples/`` directory in the repository contains seven runnable Jupyter notebooks,
-numbered ``01``-``07`` in the order we'd suggest reading them. Each one is self-contained
+The ``examples/`` directory in the repository contains eight runnable Jupyter notebooks,
+numbered ``01``-``08`` in the order we'd suggest reading them. Each one is self-contained
 (states its own imports and mock data) and ends with a "Next steps" pointer to the notebooks
 that naturally follow it, so you can also jump straight to whichever topic matches your own
 project.
@@ -47,11 +47,16 @@ project.
      - `pyfc_checkpointing_tutorial.ipynb <https://github.com/mbustama/FeldmanCousins/blob/main/examples/07_pyfc_checkpointing_tutorial.ipynb>`_
      - A genuinely-running ``compute_fc_intervals`` call, killed mid-analysis with ``SIGTERM`` (mimicking a Slurm walltime kill), then correctly resumed with ``warm_start=True`` -- with a checkpoint inspection and a determinism check proving nothing was silently recomputed or corrupted.
      - You're running on a preemptible/walltime-limited cluster, or just want to see the checkpointing "Salient Feature" actually happen.
+   * - 08
+     - `pyfc_gaussian_priors_tutorial.ipynb <https://github.com/mbustama/FeldmanCousins/blob/main/examples/08_pyfc_gaussian_priors_tutorial.ipynb>`_
+     - Adding *soft* Gaussian constraints on nuisance parameters with ``extra_nll``, including a closed-form check of PyFC's :math:`-2\ln L` convention, a degeneracy that a 3% prior on the background visibly tightens, and one-sided/derived-quantity penalties a table of ``(centre, width)`` can't express.
+     - A nuisance parameter in your model was measured elsewhere and you want that external result to constrain the fit.
 
 ``01``-``03`` build on each other and are worth reading in order for a first project;
-``04``-``07`` are independent, narrower deep-dives you can read in any order once you need
+``04``-``08`` are independent, narrower deep-dives you can read in any order once you need
 that specific capability.
 
 See :doc:`quickstart` for the non-notebook version of the basic workflow, and
 :ref:`joint-simplex-constraints` for the reference documentation that notebook ``06`` walks
-through hands-on.
+through hands-on. Notebooks ``06`` and ``08`` are the two halves of the constraint story --
+hard geometry and soft priors respectively -- and are best read together.
