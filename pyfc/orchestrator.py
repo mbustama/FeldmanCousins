@@ -476,6 +476,29 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
         a test statistic of exactly 1.0 at ``c + s`` -- see
         ``tests/test_extra_nll.py``, which pins that oracle.
 
+        CORRELATED CONSTRAINTS. Because this is a callable and not a table of
+        ``(centre, width)`` triples, it is not restricted to independent
+        Gaussians. A parameter set measured *together* carries a covariance,
+        and the term is then ``d^T Sigma^-1 d`` over that block -- still with no
+        factor of 0.5. ``pyfc.priors`` builds these: ``gaussian_block`` from a
+        covariance, ``gaussian_block_from_correlation`` from the sigmas and
+        correlation matrix results are usually published as, and
+        ``combine_priors`` to sum any number of blocks with hand-written terms.
+        Prefer them to writing the quadratic form yourself: they pick the fast
+        formulation by size, reject a covariance that is not positive definite
+        (which would otherwise make the penalty unbounded BELOW, pushing the fit
+        away from the constraint with no symptom), and snapshot the matrix so a
+        later edit cannot silently be ignored by numba.
+
+        MARGINAL, NOT CONDITIONAL. For a correlated block, the 1-sigma point
+        this construction reports for one parameter is ``sqrt(Sigma_ii)`` -- the
+        square root of a COVARIANCE element -- and NOT ``1/sqrt((Sigma^-1)_ii)``,
+        which is what reading the inverse's diagonal gives. Profiling a Gaussian
+        returns the marginal. At a correlation of 0.9 the two differ by a factor
+        of 2.3, in the direction of claiming a constraint far tighter than the
+        measurement supports. Sigmas quoted alongside a correlation matrix are
+        the marginal ones.
+
         Receives the FULL parameter vector (length ``len(grids)``), in the same
         order as ``grids``, with any scan-fixed values already substituted --
         the same convention `constraints` uses. Writing against the full vector
@@ -503,9 +526,14 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
         call an arbitrary Python function; a plain callable raises TypeError
         with instructions. Every other strategy accepts any Python callable.
         Note also that with ``likelihood_type="unbinned"``, toys are dispatched
-        to a ProcessPoolExecutor, so an unpicklable `extra_nll` (a lambda or a
-        closure) makes that pool fail and fall back to threads -- correct, but
-        slower; define it at module level to keep the process pool.
+        to a ProcessPoolExecutor, so an unpicklable `extra_nll` makes that pool
+        fail and fall back to threads -- correct, but slower. What is unpicklable
+        is an UN-JITTED lambda or closure; a jitted one pickles fine, because a
+        numba dispatcher implements its own serialisation. Measured: a plain
+        module-level function, a ``gaussian_block`` closure and a nested
+        ``combine_priors`` result all survive a real subprocess round-trip, while
+        an un-jitted lambda raises. So the rule is to define an un-jitted penalty
+        at module level; a builder's output needs no such care.
     neighbor_seeding : bool, optional
         When True (default) and strategy="scipy", the DATA fit (not the MC
         toys, which are already seeded from the conditional MLE) at each 1D/
