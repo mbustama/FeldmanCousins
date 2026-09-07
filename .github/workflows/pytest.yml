@@ -37,7 +37,7 @@ jobs:
         # Install the package along with the optional [test] dependencies.
         # Deliberately WITHOUT the [optimizers] extra: that ultranest is optional is a
         # promise PyFC makes to its users, and this matrix is where that promise is
-        # checked.  The 5 UltraNest tests skip here by design.  The coverage job below
+        # checked.  The 18 UltraNest tests skip here by design.  The coverage job below
         # does install it, for a different reason -- see there.
         pip install -e ".[test]"
 
