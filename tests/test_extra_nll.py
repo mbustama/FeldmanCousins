@@ -328,7 +328,8 @@ def test_2d_conditional_fit_places_both_fixed_values_correctly():
                 + ((params[1] - 1.0) / 0.02) ** 2
                 + ((params[2] - 1.0) / 0.5) ** 2)
 
-    n_obs = np.array([50.0]); s2 = np.array([0.0])
+    n_obs = np.array([50.0])
+    s2 = np.array([0.0])
     bounds = [(0.5, 1.5)] * 3
     uncond, _ = unconditional_fit_scipy(
         n_obs, 3, bounds, flat3, S_sumw2=s2, B_sumw2=s2, extra_nll=pen3)
