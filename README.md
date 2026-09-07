@@ -123,9 +123,9 @@ PyFC is protected by a Continuous Integration (CI) pipeline powered by GitHub Ac
 
 The matrix job deliberately installs only `.[test]`, *without* the optional `optimizers` extra: that `ultranest` is optional is a promise PyFC makes to its users, and this is where that promise is checked.
 
-The test suite currently comprises 239 tests across 29 files under `tests/`, grouped into four categories. A default environment runs 220 of them: 18 are UltraNest-specific and skip automatically if the optional `ultranest` package isn't installed, and one of the two `extra_nll` Numba-guard tests always skips, since each is scoped to the JIT mode it describes and only one of those can hold at a time. Under `NUMBA_DISABLE_JIT=1` — which `scripts/run_coverage.sh` and the CI Coverage job both set for most of the suite — the other one runs instead, and three `pyfc.priors` tests skip, because `@njit` returns a plain function in that mode so the jitted/plain distinction they describe does not exist. The suite therefore never reports all 239 passing in any single run, by design.
+The test suite currently comprises 247 tests across 29 files under `tests/`, grouped into four categories. A default environment runs 228 of them: 18 are UltraNest-specific and skip automatically if the optional `ultranest` package isn't installed, and one of the two `extra_nll` Numba-guard tests always skips, since each is scoped to the JIT mode it describes and only one of those can hold at a time. Under `NUMBA_DISABLE_JIT=1` — which `scripts/run_coverage.sh` and the CI Coverage job both set for most of the suite — the other one runs instead, and three `pyfc.priors` tests skip, because `@njit` returns a plain function in that mode so the jitted/plain distinction they describe does not exist. The suite therefore never reports all 247 passing in any single run, by design.
 * **Core statistical correctness** (48 tests, 7 files): the smoothed unphysical-rate NLL penalty and its boundary-discontinuity/NaN handling, the finite-MC likelihood formula checked against hand-computed references (including its numerically-stable high-`alpha` reformulation), N-dimensional and non-contiguous binned data, disconnected 1D accepted-interval reporting, unbinned `pdf_components` correctness (2- and 3+-component models), the unbinned toy-generation/fitting pipeline end to end, and the unbinned grid-search path checked against brute-force oracles and the profile-likelihood invariants (a conditional fit never undercuts the unconditional minimum, and the two coincide exactly at the best-fit point).
-* **Optimizer robustness** (99 tests, 8 files): optimizer restarts and neighbor warm-starting, `bounds_func`/`constraints` support (SciPy and UltraNest `LinearConstraint`/`NonlinearConstraint`, including the zero-free-parameters edge case), SciPy boundary clamping, Asimov-dataset convergence (the minimizer must recover the known true parameters exactly), and the three UltraNest fits run for real against an Asimov dataset -- checked for MLE recovery, the profile-likelihood invariants, `bounds_func` handling, the unbinned likelihood path, agreement with SciPy on the same optimum, and `extra_nll`'s soft Gaussian constraints -- checked against the closed-form `c +- z*s` interval, verified to reach the unconditional, conditional and toy fits separately, and pinned for sign, units and full-vector reassembly order, plus `pyfc.priors`' correlated and composite builders -- checked against the exact marginal oracle `t(c_i + sqrt(Sigma_ii)) == 1` at a correlation of 0.9 and over a dense 13x13 covariance, with the two formulations required to agree, the positive-definiteness and symmetry guards exercised, and the compile-time snapshot pinned.
+* **Optimizer robustness** (107 tests, 8 files): optimizer restarts and neighbor warm-starting, `bounds_func`/`constraints` support (SciPy and UltraNest `LinearConstraint`/`NonlinearConstraint`, including the zero-free-parameters edge case), SciPy boundary clamping, Asimov-dataset convergence (the minimizer must recover the known true parameters exactly), and the three UltraNest fits run for real against an Asimov dataset -- checked for MLE recovery, the profile-likelihood invariants, `bounds_func` handling, the unbinned likelihood path, agreement with SciPy on the same optimum, and `extra_nll`'s soft Gaussian constraints -- checked against the closed-form `c +- z*s` interval, verified to reach the unconditional, conditional and toy fits separately, and pinned for sign, units and full-vector reassembly order, plus `pyfc.priors`' correlated and composite builders -- checked against the exact marginal oracle `t(c_i + sqrt(Sigma_ii)) == 1` at a correlation of 0.9 and over a dense 13x13 covariance, with the two formulations required to agree, the positive-definiteness and symmetry guards exercised, and the compile-time snapshot pinned.
 * **Algorithmic features** (13 tests, 2 files): `sparsify_grid`'s boundary-refinement guard, and the validated `adaptive_toys`/`toy_batch_size` early-stopping behavior.
 * **Infrastructure** (79 tests, 12 files): core imports and optional-dependency detection, I/O integrity, the real `warm_start`/checkpoint-resume machinery (not just an `.npz` round-trip), including resuming a run interrupted mid-2D-scan and `sparsify_grid`'s nearest-neighbour interpolation fallback for installs without SciPy, multiprocessing serialization via `ProcessPoolExecutor` and the toy pool's documented recovery when a user's callable turns out to be unpicklable, Numba JIT compilation hooks, UltraNest's internal-bug retry wrapper, corner-plot generation, the JSON results export (`NumpyEncoder`'s type conversions and the 2D payload, round-tripped through a stock `json.load`), and the CLI/JSON configuration layer — its `Defaults -> JSON -> CLI` precedence chain, its refusal to spin or invent answers when stdin runs out, and a set of self-discovering structural sweeps that check every analysis parameter lines up across all four places it is written down (the hardcoded defaults, the `argparse` flags, the interactive wizard, and `compute_fc_intervals`' own signature).
 
@@ -197,7 +197,7 @@ FeldmanCousins/
 │   ├── 05_pyfc_strategy_comparison_tutorial.ipynb   # grid/scipy/hybrid strategy comparison + custom plotting from disk
 │   ├── 06_pyfc_joint_constraints_tutorial.ipynb     # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
 │   ├── 07_pyfc_checkpointing_tutorial.ipynb         # Interrupting (SIGTERM) and resuming a real run via warm_start
-│   └── 08_pyfc_gaussian_priors_tutorial.ipynb       # Soft Gaussian constraints on nuisance parameters via extra_nll
+│   └── 08_pyfc_soft_constraints_tutorial.ipynb       # Soft constraints via extra_nll/pyfc.priors: Gaussian, correlated, one-sided
 ├── pyfc/                            # Main Python package
 │   ├── __init__.py                  # Package initialization and metadata
 │   ├── binned.py                    # Binned NLL math and Numba-accelerated optimizers
@@ -409,7 +409,7 @@ can also jump straight to whichever topic matches your own project.
 | 05 | [`pyfc_strategy_comparison_tutorial.ipynb`](https://github.com/mbustama/FeldmanCousins/blob/main/examples/05_pyfc_strategy_comparison_tutorial.ipynb) | Benchmarking `"grid"`/`"scipy"`/`"hybrid"`/`"ultranest"` on the same model, then building a fully custom Matplotlib figure directly from PyFC's saved `.json`/`.npz` output (no dependency on `generate_corner_plot`). | You're choosing an optimizer strategy, or you want a publication-quality figure beyond PyFC's built-in plot. |
 | 06 | [`pyfc_joint_constraints_tutorial.ipynb`](https://github.com/mbustama/FeldmanCousins/blob/main/examples/06_pyfc_joint_constraints_tutorial.ipynb) | Reproducing and fixing the flat-gradient optimizer trap that comes from a joint (non-box) constraint like a simplex ($f_e + f_\mu \leq 1$), using `bounds_func` and `constraints`. | Two or more of your parameters are linked by an inequality that a per-parameter `[lo, hi]` box can't express. |
 | 07 | [`pyfc_checkpointing_tutorial.ipynb`](https://github.com/mbustama/FeldmanCousins/blob/main/examples/07_pyfc_checkpointing_tutorial.ipynb) | A genuinely-running `compute_fc_intervals` call, killed mid-analysis with `SIGTERM` (mimicking a Slurm walltime kill), then correctly resumed with `warm_start=True` -- with a checkpoint inspection and a determinism check proving nothing was silently recomputed or corrupted. | You're running on a preemptible/walltime-limited cluster, or just want to see the checkpointing "Salient Feature" actually happen. |
-| 08 | [`pyfc_gaussian_priors_tutorial.ipynb`](https://github.com/mbustama/FeldmanCousins/blob/main/examples/08_pyfc_gaussian_priors_tutorial.ipynb) | Adding *soft* constraints on nuisance parameters with `extra_nll`: a closed-form check of PyFC's $-2\ln L$ convention, a signal/background degeneracy that a 3% prior visibly tightens, **correlated priors** via `pyfc.priors` (with the marginal-vs-conditional distinction as running code), and one-sided or derived-quantity penalties that a table of `(centre, width)` can't express. | A nuisance parameter in your model was measured elsewhere and you want that external result to constrain the fit. |
+| 08 | [`pyfc_soft_constraints_tutorial.ipynb`](https://github.com/mbustama/FeldmanCousins/blob/main/examples/08_pyfc_soft_constraints_tutorial.ipynb) | Adding *soft* constraints on nuisance parameters with `extra_nll`: a closed-form check of PyFC's $-2\ln L$ convention, a signal/background degeneracy that a 3% prior visibly tightens, **correlated priors** via `pyfc.priors` (with the marginal-vs-conditional distinction as running code), and one-sided or derived-quantity penalties that a table of `(centre, width)` can't express. | A nuisance parameter in your model was measured elsewhere and you want that external result to constrain the fit. |
 
 `01`-`03` build on each other and are worth reading in order for a first project; `04`-`08`
 are independent, narrower deep-dives you can read in any order once you need that specific
@@ -627,10 +627,14 @@ With `strategy="grid"` the callable must be `@njit`-decorated, because the grid 
 inside compiled code that cannot call an arbitrary Python function; passing a plain callable
 raises `TypeError` with instructions. Every other strategy accepts any Python callable. Note
 also that with `likelihood_type="unbinned"` toys are dispatched to a `ProcessPoolExecutor`,
-so an unpicklable `extra_nll` (a lambda or closure) makes that pool fall back to threads —
-correct, but slower; define it at module level to keep the process pool.
+so an unpicklable `extra_nll` makes that pool fall back to threads — correct, but slower.
+What is unpicklable is an **un-jitted** lambda or closure; a jitted one pickles fine, since a
+numba dispatcher serialises itself. Measured: a module-level function, a `gaussian_block`
+closure and a nested `combine_priors` result all survive a real subprocess round-trip, while
+an un-jitted lambda raises. So define an *un-jitted* penalty at module level; a builder's
+output needs no such care.
 
-[`examples/08_pyfc_gaussian_priors_tutorial.ipynb`](https://github.com/mbustama/FeldmanCousins/blob/main/examples/08_pyfc_gaussian_priors_tutorial.ipynb)
+[`examples/08_pyfc_soft_constraints_tutorial.ipynb`](https://github.com/mbustama/FeldmanCousins/blob/main/examples/08_pyfc_soft_constraints_tutorial.ipynb)
 works all of this through hands-on, including a closed-form numerical check of the units
 above and a side-by-side run showing what a 3% prior on a degenerate background does to the
 interval.
@@ -677,11 +681,15 @@ Three things the builders handle that hand-written priors get wrong:
 * **A covariance that isn't positive definite is accepted by `np.linalg.inv`.** The penalty
   is then unbounded below along some direction, so the "constraint" pushes the fit *away*
   and the run completes with an ordinary-looking interval. The builders reject it up front,
-  naming the smallest eigenvalue.
+  naming the smallest eigenvalue, the tolerance and the condition number. The test is by
+  eigenvalue rather than by `np.linalg.cholesky`, which is not reliable here: at
+  `sigma = (0.2, 0.3)` with correlation exactly 1, `0.04*0.09` and `0.06**2` differ in the
+  last bit, the determinant lands at `+1e-18`, and cholesky accepts the matrix. Merely
+  ill-conditioned covariances still pass — condition number `1e12` is fine.
 
 Composition is additive and stays jitted, so adding a second constraint does not silently
 cost you `strategy="grid"`. Section 4 of
-[`examples/08_pyfc_gaussian_priors_tutorial.ipynb`](https://github.com/mbustama/FeldmanCousins/blob/main/examples/08_pyfc_gaussian_priors_tutorial.ipynb)
+[`examples/08_pyfc_soft_constraints_tutorial.ipynb`](https://github.com/mbustama/FeldmanCousins/blob/main/examples/08_pyfc_soft_constraints_tutorial.ipynb)
 works through all of it, including the marginal/conditional distinction as running code.
 
 

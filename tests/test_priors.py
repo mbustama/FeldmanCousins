@@ -295,17 +295,43 @@ def test_bad_blocks_are_rejected_with_an_actionable_message(indices, centres, co
         gaussian_block(indices, centres, cov)
 
 
-def test_a_singular_covariance_is_rejected_rather_than_inverted():
+@pytest.mark.parametrize(
+    "sig_a, sig_b",
+    [(0.2, 0.3), (0.1, 0.2), (0.05, 0.5), (1.0, 1.0), (0.046, 0.11), (2.0, 3.0)],
+)
+def test_a_singular_covariance_is_rejected_rather_than_inverted(sig_a, sig_b):
     """
     The most dangerous input, because `np.linalg.inv` may not raise on it.
 
     A non-positive-definite covariance makes `d^T Sigma^-1 d` unbounded below along some
     direction, so the term pushes the fit AWAY. Nothing downstream notices: the run
     completes and the interval looks ordinary.
+
+    Parametrised over several widths on purpose. `np.linalg.cholesky` alone is NOT a
+    reliable test here: at sigma=(0.2, 0.3) with rho exactly 1, `0.04*0.09` and `0.06**2`
+    differ in the last bit, the determinant comes out at +1e-18, and cholesky accepts the
+    matrix. Measured, it accepted 1 of these 8-ish cases -- so a single fixture passes or
+    fails on rounding luck, which is how this slipped through in the first place.
     """
-    perfect = _correlated_cov(0.1, 0.2, 1.0)          # rho = 1 exactly
     with pytest.raises(ValueError, match="positive definite"):
-        gaussian_block([0, 1], [1.0, 1.0], perfect)
+        gaussian_block([0, 1], [1.0, 1.0], _correlated_cov(sig_a, sig_b, 1.0))
+
+
+@pytest.mark.parametrize("condition", [1e6, 1e9, 1e12])
+def test_an_ill_conditioned_but_usable_covariance_is_accepted(condition):
+    """
+    The rank tolerance must not become a condition-number policy.
+
+    Real covariances from a tightly-constrained fit are legitimately ill-conditioned, and
+    rejecting them would turn a guard against a genuine error into an obstacle. Only
+    rank-deficiency is refused.
+    """
+    rng = np.random.default_rng(0)
+    q, _ = np.linalg.qr(rng.normal(size=(6, 6)))
+    cov = q @ np.diag(np.geomspace(1.0, 1.0 / condition, 6)) @ q.T
+    cov = 0.5 * (cov + cov.T)
+    prior = gaussian_block(np.arange(6), np.zeros(6), cov)
+    assert np.isfinite(prior(np.full(6, 0.01)))
 
 
 # --- 5. from_correlation --------------------------------------------------------------

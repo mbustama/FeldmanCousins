@@ -195,7 +195,7 @@ code before being kept.
   pay ~5%, not the ~170% a jitted no-op would have cost, because numba compiles
   the `is not None` branch away per specialisation.
 
-- **`examples/08_pyfc_gaussian_priors_tutorial.ipynb`**, the runnable
+- **`examples/08_pyfc_soft_constraints_tutorial.ipynb`**, the runnable
   counterpart to the entry above. It opens with the units check as a *numerical*
   demonstration rather than an assertion -- a lone parameter whose predicted rate
   ignores it, so the likelihood is the prior alone and the test statistic has the
@@ -207,8 +207,17 @@ code before being kept.
   observed statistic against the toy-derived critical value for both -- the
   critical values differ between the runs, which is the visible consequence of the
   penalty reaching the toys. The remaining sections cover the vectorised
-  many-priors form, a one-sided penalty on a derived sum, and the `strategy="grid"`
-  guard firing on a plain Python callable. Two notes on what it does *not* claim:
+  many-priors form, correlated priors built with `pyfc.priors` (see the entry
+  below), a one-sided penalty on a derived sum, and the guards firing -- both the
+  `strategy="grid"` one on a plain Python callable and the builders' own on a
+  singular covariance, a correlation matrix passed where a covariance was wanted,
+  mismatched shapes and a repeated index.
+
+  The notebook is named for the mechanism rather than for one shape of it. It
+  covers a plain Gaussian, correlated blocks, a one-sided bound and a constraint
+  on a derived quantity, only the first of which is Gaussian, so "soft
+  constraints" is what the file and its title now say. Nothing was released under
+  the old name. Two notes on what it does *not* claim:
   the toy is deliberately small, so the effect shown is the upper limit on the
   signal strength halving rather than the total loss of a limit described above,
   and the notebook says so; and neither run excludes zero signal, which is correct
@@ -255,7 +264,14 @@ code before being kept.
   parameters, exposed as `MATMUL_THRESHOLD`. And a covariance that is not positive
   definite is accepted by `np.linalg.inv` while making the penalty unbounded below,
   so the "constraint" pushes the fit away and the run completes looking ordinary;
-  that is rejected up front, naming the smallest eigenvalue.
+  that is rejected up front, naming the smallest eigenvalue, the tolerance and the
+  condition number. The test is by eigenvalue with a relative tolerance rather than
+  by `np.linalg.cholesky`, which is unreliable for exactly this case: at
+  `sigma = (0.2, 0.3)` with correlation exactly 1 the determinant rounds to `+1e-18`
+  and cholesky accepts the matrix -- measured, it accepted 1 of 8 exactly-singular
+  covariances, so a single test fixture passes or fails on rounding luck. The guard
+  and its test are now parametrised over several widths, and a companion test pins
+  that merely ill-conditioned matrices (condition number up to 1e12) still build.
 
   `gaussian_block`, `gaussian_block_from_correlation` and `combine_priors` are
   re-exported from `pyfc`. Section 4 of notebook `08` works through all of it, and

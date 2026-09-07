@@ -48,7 +48,7 @@ project.
      - A genuinely-running ``compute_fc_intervals`` call, killed mid-analysis with ``SIGTERM`` (mimicking a Slurm walltime kill), then correctly resumed with ``warm_start=True`` -- with a checkpoint inspection and a determinism check proving nothing was silently recomputed or corrupted.
      - You're running on a preemptible/walltime-limited cluster, or just want to see the checkpointing "Salient Feature" actually happen.
    * - 08
-     - `pyfc_gaussian_priors_tutorial.ipynb <https://github.com/mbustama/FeldmanCousins/blob/main/examples/08_pyfc_gaussian_priors_tutorial.ipynb>`_
+     - `pyfc_soft_constraints_tutorial.ipynb <https://github.com/mbustama/FeldmanCousins/blob/main/examples/08_pyfc_soft_constraints_tutorial.ipynb>`_
      - Adding *soft* constraints on nuisance parameters with ``extra_nll``, including a closed-form check of PyFC's :math:`-2\ln L` convention, a degeneracy that a 3% prior on the background visibly tightens, **correlated (pairwise and higher-dimensional) priors** built with ``pyfc.priors`` -- with the marginal-vs-conditional distinction worked through as running code -- and one-sided/derived-quantity penalties a table of ``(centre, width)`` can't express.
      - A nuisance parameter in your model was measured elsewhere and you want that external result to constrain the fit.
 

@@ -44,6 +44,17 @@ Two purpose-built mechanisms exist instead, and can be used together:
 See the README section "Handling Joint/Simplex-Constrained Parameters" for a
 full worked example (a neutrino flavor-fraction fit with `f_e + f_mu <= 1`).
 
+Both of those are HARD constraints: a point is allowed or forbidden. If what
+you actually have is a parameter that was MEASURED elsewhere -- `1.0 +- 4.6%`
+from someone else's analysis -- that is a SOFT constraint and neither mechanism
+above expresses it. Use `extra_nll` (accepted by every fit function here, and
+by `compute_fc_intervals`), which adds a term to the NLL instead of bounding
+the search. Note the units: PyFC's NLL is `-2 ln L`, so a Gaussian of width `s`
+contributes `((x - c)/s)**2` with NO factor of 0.5. For parameters measured
+together, `pyfc.priors` builds the correlated form from a covariance or from
+sigmas plus a correlation matrix. The two kinds compose: a model may carry
+`bounds_func`, `constraints` and `extra_nll` at once.
+
 Created: v0.1.0 (July 24, 2026)
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
