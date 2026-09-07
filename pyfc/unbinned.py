@@ -118,7 +118,7 @@ def calc_nll_unbinned(params, len_obs, probs, compute_rates_func):
 
 
 # --- 2. Grid Search Optimizers (Unbinned) ---
-def unconditional_fit_grid_unbinned(obs_events, pdf_components, full_grid_points, compute_rates_func):
+def unconditional_fit_grid_unbinned(obs_events, pdf_components, full_grid_points, compute_rates_func, extra_nll=None):
     """
     Performs a brute-force global scan over the parameter space to find the unconditional MLE.
 
@@ -154,13 +154,15 @@ def unconditional_fit_grid_unbinned(obs_events, pdf_components, full_grid_points
     for row in range(len(full_grid_points)):
         p = full_grid_points[row]
         nll = calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
+        if extra_nll is not None:
+            nll += extra_nll(p)
         if nll < min_nll:
             min_nll = nll
             best_params = p.copy()
 
     return min_nll, best_params
 
-def conditional_fit_grid_unbinned_1d(test_val, fix_idx, n_params, obs_events, pdf_components, cond_grid_points, compute_rates_func):
+def conditional_fit_grid_unbinned_1d(test_val, fix_idx, n_params, obs_events, pdf_components, cond_grid_points, compute_rates_func, extra_nll=None):
     """
     Performs a brute-force 1D conditional profile scan for the unbinned likelihood.
     Fixes one parameter of interest and scans the remaining grid.
@@ -210,13 +212,15 @@ def conditional_fit_grid_unbinned_1d(test_val, fix_idx, n_params, obs_events, pd
                 free_i += 1
 
         nll = calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
+        if extra_nll is not None:
+            nll += extra_nll(p)
         if nll < min_nll:
             min_nll = nll
             best_params = p.copy()
 
     return min_nll, best_params
 
-def conditional_fit_grid_unbinned_2d(test_vA, test_vB, fix_A, fix_B, n_params, obs_events, pdf_components, cond_grid_points, compute_rates_func):
+def conditional_fit_grid_unbinned_2d(test_vA, test_vB, fix_A, fix_B, n_params, obs_events, pdf_components, cond_grid_points, compute_rates_func, extra_nll=None):
     """
     Performs a brute-force 2D conditional profile scan for the unbinned likelihood.
     Fixes two parameters of interest to map joint contours.
@@ -264,6 +268,8 @@ def conditional_fit_grid_unbinned_2d(test_vA, test_vB, fix_A, fix_B, n_params, o
                 free_i += 1
 
         nll = calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
+        if extra_nll is not None:
+            nll += extra_nll(p)
         if nll < min_nll:
             min_nll = nll
             best_params = p.copy()
@@ -274,7 +280,7 @@ def conditional_fit_grid_unbinned_2d(test_vA, test_vB, fix_A, fix_B, n_params, o
 # --- 3. Toy Generators (Unbinned) ---
 def generate_and_fit_toys_grid_unbinned_1d(test_val, fix_idx, true_params, n_params, pdf_components,
                                            full_grid_points, cond_grid_points, n_toys, S_mc_pool, B_mc_pool,
-                                           compute_rates_func, generate_toy_func):
+                                           compute_rates_func, generate_toy_func, extra_nll=None):
     """
     Sequentially generates and evaluates 1D unbinned toys entirely using grid search.
 
@@ -315,8 +321,8 @@ def generate_and_fit_toys_grid_unbinned_1d(test_val, fix_idx, true_params, n_par
     t_statistics = np.zeros(n_toys)
     for t in range(n_toys):
         toy_events = generate_toy_func(true_params, S_mc_pool, B_mc_pool)
-        uncond_nll, _ = unconditional_fit_grid_unbinned(toy_events, pdf_components, full_grid_points, compute_rates_func)
-        cond_nll, _ = conditional_fit_grid_unbinned_1d(test_val, fix_idx, n_params, toy_events, pdf_components, cond_grid_points, compute_rates_func)
+        uncond_nll, _ = unconditional_fit_grid_unbinned(toy_events, pdf_components, full_grid_points, compute_rates_func, extra_nll)
+        cond_nll, _ = conditional_fit_grid_unbinned_1d(test_val, fix_idx, n_params, toy_events, pdf_components, cond_grid_points, compute_rates_func, extra_nll)
 
         # Bounded at 0.0 to correct floating point inaccuracies when cond_nll ≈ uncond_nll
         t_statistics[t] = max(0.0, cond_nll - uncond_nll)
@@ -324,7 +330,7 @@ def generate_and_fit_toys_grid_unbinned_1d(test_val, fix_idx, true_params, n_par
 
 def generate_and_fit_toys_grid_unbinned_2d(test_vA, test_vB, fix_A, fix_B, true_params, n_params, pdf_components,
                                            full_grid_points, cond_grid_points, n_toys, S_mc_pool, B_mc_pool,
-                                           compute_rates_func, generate_toy_func):
+                                           compute_rates_func, generate_toy_func, extra_nll=None):
     """
     Sequentially generates and evaluates 2D unbinned toys entirely using grid search.
 
@@ -361,8 +367,8 @@ def generate_and_fit_toys_grid_unbinned_2d(test_vA, test_vB, fix_A, fix_B, true_
     t_statistics = np.zeros(n_toys)
     for t in range(n_toys):
         toy_events = generate_toy_func(true_params, S_mc_pool, B_mc_pool)
-        uncond_nll, _ = unconditional_fit_grid_unbinned(toy_events, pdf_components, full_grid_points, compute_rates_func)
-        cond_nll, _ = conditional_fit_grid_unbinned_2d(test_vA, test_vB, fix_A, fix_B, n_params, toy_events, pdf_components, cond_grid_points, compute_rates_func)
+        uncond_nll, _ = unconditional_fit_grid_unbinned(toy_events, pdf_components, full_grid_points, compute_rates_func, extra_nll)
+        cond_nll, _ = conditional_fit_grid_unbinned_2d(test_vA, test_vB, fix_A, fix_B, n_params, toy_events, pdf_components, cond_grid_points, compute_rates_func, extra_nll)
 
         t_statistics[t] = max(0.0, cond_nll - uncond_nll)
     return t_statistics

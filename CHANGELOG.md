@@ -160,6 +160,40 @@ code before being kept.
   still `>=3.8`; narrowing it, or making the fallback non-blocking, is a
   deliberate decision that has not been taken here.
 
+- **`extra_nll`, a hook for soft (Gaussian) constraints on nuisance parameters.**
+  `bounds_func` and `constraints` express HARD geometry on the parameter box;
+  nothing could express the SOFT statement that a parameter is `1.0 +- 4.6%`
+  because it was measured, which is how an external constraint on a systematic
+  enters a physics likelihood. `extra_nll(params) -> float` is added to the NLL
+  at every evaluation -- a callable rather than a table of `(centre, width)`
+  triples, because triples cannot express a one-sided bound (a cosmological
+  limit) nor a constraint on a quantity derived from several parameters. It
+  receives the FULL parameter vector in `grids` order with scan-fixed values
+  substituted, the convention `constraints` already uses and the only one under
+  which one function serves the unconditional fit, the 1D scan and the 2D scan
+  alike.
+
+  It applies to both likelihoods, all four strategies, and unconditional,
+  conditional AND toy fits. The toys are the point: a term reaching the data fit
+  but not the toys would have the observed statistic and its critical value
+  computed under different likelihoods, silently destroying the coverage the
+  method exists to provide. Three tests target that specific failure, because
+  end-to-end numbers cannot see it -- toys are generated at `true_params` taken
+  from the conditional fit, so removing the penalty from the toy dispatch still
+  moves the results and the run still looks plausible.
+
+  **Units:** PyFC's NLL is `-2 ln L`, so a Gaussian of width `s` contributes
+  `((x - c)/s)**2`, NOT `0.5 * ((x - c)/s)**2`. The wrong convention makes every
+  constraint weaker by `sqrt(2)` -- a stated 4.6% prior acting as 6.5% -- with a
+  converged fit and no symptom. A closed-form test pins it: a lone parameter
+  constrained only by this term gives a test statistic of exactly 1.0 at `c + s`.
+
+  With `strategy="grid"` the callable must be `@njit`-decorated, since the grid
+  scan runs inside compiled code; a plain callable raises `TypeError` naming the
+  decorator, rather than the 316-character numba `TypingError` that mentions
+  neither `njit` nor the offending argument. Callers who do not use the feature
+  pay ~5%, not the ~170% a jitted no-op would have cost, because numba compiles
+  the `is not None` branch away per specialisation.
 - **`pyfc.__version__`**, read from the installed distribution's metadata rather
   than written down a second time. `pyproject.toml` is the single source: the
   package exposes it, and `docs/source/conf.py` imports that value instead of
