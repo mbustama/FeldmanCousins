@@ -389,6 +389,19 @@ def test_grid_strategy_rejects_a_plain_callable_with_an_actionable_message(tmp_p
     assert "extra_nll" in msg, "the error must name the offending argument"
     assert "grid" in msg, "the error must say which strategy imposed the requirement"
 
+    # The message carries a copy-pasteable example, and an example is a teaching act.
+    # PyFC's NLL is -2lnL, so the example must NOT carry the 0.5 of the -lnL convention:
+    # this string is read at exactly the moment a user is confused about extra_nll, and
+    # shipping the wrong convention there would plant the sqrt(2)-too-weak bug the rest of
+    # the docs exist to prevent. Checked as a substring of the example line only, so an
+    # unrelated 0.5 elsewhere in the message would not trip it.
+    example = [ln for ln in msg.splitlines() if "return" in ln]
+    assert example, "the message must show a worked example, not just prose"
+    assert "0.5" not in example[0], (
+        f"the example teaches the -lnL convention: {example[0]!r}. PyFC's NLL is -2lnL, "
+        "so a width-s Gaussian contributes ((x-c)/s)**2 with no factor of 0.5."
+    )
+
 
 def test_grid_guard_does_not_fire_for_other_strategies(tmp_path):
     """The requirement is specific to grid; a plain callable is fine everywhere else."""
