@@ -13,6 +13,7 @@ examples/algorithmic_features_output/
 examples/strategy_comparison_output/
 examples/non_contiguous_output/
 examples/checkpointing_output/
+examples/gaussian_priors_output/
 PyFeldmanCousins.egg-info/
 build/
 dist/
