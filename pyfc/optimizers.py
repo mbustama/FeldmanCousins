@@ -72,6 +72,28 @@ except ImportError:
 
 
 # --- 0. Shared Constraint Helpers ---
+
+
+def _with_extra(nll, extra_nll, full_params):
+    """
+    Add the caller's soft-constraint term to an NLL value.
+
+    Exists so the six fit functions all add the penalty the same way, and -- more
+    importantly -- so the sign is right by construction at the three UltraNest sites that
+    return a NEGATED log-likelihood. Those negate the result of this call, which negates
+    the penalty along with the NLL, which is what a maximiser needs. Adding the term by
+    hand at each site is exactly where a sign error would hide.
+
+    `full_params` must be the FULL parameter vector in `grids` order, with any scan-fixed
+    values already substituted -- never the free subspace. The free subspace differs
+    between the unconditional fit, the 1D scan and the 2D scan, so a callable written
+    against it could not work in all three; the full vector is the same convention
+    `constraints` already uses.
+    """
+    if extra_nll is None:
+        return nll
+    return nll + extra_nll(full_params)
+
 # `scipy.optimize.minimize` only accepts `constraints=` for methods 'COBYLA',
 # 'SLSQP', 'trust-constr' -- NOT the default 'L-BFGS-B'. These helpers let
 # `constraints` (a list of LinearConstraint/NonlinearConstraint objects,
@@ -271,7 +293,7 @@ def _minimize_with_restarts(cost, x0, bounds, method, extra_kwargs, n_restarts=1
 def unconditional_fit_scipy(data, n_params, bounds_list, compute_rates_func, seed=None,
                             pdf_components=None,
                             likelihood_type="binned", S_sumw2=None, B_sumw2=None, use_finite_mc=False,
-                            bounds_func=None, constraints=None, scipy_method=None, n_restarts=1):
+                            bounds_func=None, constraints=None, scipy_method=None, n_restarts=1, extra_nll=None):
     """
     Performs an unconditional global maximum likelihood fit using SciPy's L-BFGS-B.
     
@@ -348,10 +370,10 @@ def unconditional_fit_scipy(data, n_params, bounds_list, compute_rates_func, see
         probs = [pdf(data) if len_obs > 0 else np.array([]) for pdf in pdf_components]
 
         def cost(params):
-            return calc_nll_unbinned(params, len_obs, probs, compute_rates_func)
+            return _with_extra(calc_nll_unbinned(params, len_obs, probs, compute_rates_func), extra_nll, params)
     else:
         def cost(params):
-            return calc_nll(params, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+            return _with_extra(calc_nll(params, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func), extra_nll, params)
 
     if bounds_func is not None:
         resolved_bounds = bounds_func({}, list(range(n_params)), bounds_list)
@@ -375,7 +397,7 @@ def unconditional_fit_scipy(data, n_params, bounds_list, compute_rates_func, see
 def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, bounds_list, compute_rates_func, seed=None,
                              pdf_components=None,
                              likelihood_type="binned", S_sumw2=None, B_sumw2=None, use_finite_mc=False,
-                             bounds_func=None, constraints=None, scipy_method=None, n_restarts=1):
+                             bounds_func=None, constraints=None, scipy_method=None, n_restarts=1, extra_nll=None):
     """
     Performs a conditional maximum likelihood fit (profiling 1 parameter) using SciPy.
     
@@ -462,14 +484,14 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, bounds_list, com
             p[fix_idx] = test_val
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
-            return calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
+            return _with_extra(calc_nll_unbinned(p, len_obs, probs, compute_rates_func), extra_nll, p)
     else:
         def cost(free_p):
             p = np.zeros(n_params)
             p[fix_idx] = test_val
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
-            return calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+            return _with_extra(calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func), extra_nll, p)
 
     if seed is not None:
         eps = 1e-8
@@ -508,7 +530,7 @@ def conditional_fit_1d_scipy(test_val, fix_idx, n_params, data, bounds_list, com
 def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, seed=None,
                              pdf_components=None,
                              likelihood_type="binned", S_sumw2=None, B_sumw2=None, use_finite_mc=False,
-                             bounds_func=None, constraints=None, scipy_method=None, n_restarts=1):
+                             bounds_func=None, constraints=None, scipy_method=None, n_restarts=1, extra_nll=None):
     """
     Performs a conditional maximum likelihood fit (profiling 2 parameters) using SciPy.
     
@@ -585,7 +607,7 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, bou
             p[fix_B] = test_vB
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
-            return calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
+            return _with_extra(calc_nll_unbinned(p, len_obs, probs, compute_rates_func), extra_nll, p)
     else:
         def cost(free_p):
             p = np.zeros(n_params)
@@ -593,7 +615,7 @@ def conditional_fit_2d_scipy(test_vA, test_vB, fix_A, fix_B, n_params, data, bou
             p[fix_B] = test_vB
             for idx, free_val in zip(free_indices, free_p):
                 p[idx] = free_val
-            return calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+            return _with_extra(calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func), extra_nll, p)
 
     if seed is not None:
         eps = 1e-8
@@ -665,7 +687,7 @@ def _run_ultranest_with_retry(param_names, log_likelihood, prior_transform, run_
 def unconditional_fit_ultranest(data, n_params, bounds_list, compute_rates_func, verbose=1,
                                 pdf_components=None,
                                 likelihood_type="binned", S_sumw2=None, B_sumw2=None, use_finite_mc=False,
-                                bounds_func=None, constraints=None):
+                                bounds_func=None, constraints=None, extra_nll=None):
     """
     Performs an unconditional global maximum likelihood fit using UltraNest.
     
@@ -732,12 +754,12 @@ def unconditional_fit_ultranest(data, n_params, bounds_list, compute_rates_func,
         def log_likelihood(p):
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
+            return -_with_extra(calc_nll_unbinned(p, len_obs, probs, compute_rates_func), extra_nll, p)
     else:
         def log_likelihood(p):
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+            return -_with_extra(calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func), extra_nll, p)
 
     param_names = [f'p{i+1}' for i in range(n_params)]
     run_kwargs = {'min_num_live_points': 50, 'dKL': np.inf, 'min_ess': 50, 'show_status': (verbose == 2), 'viz_callback': False}
@@ -757,7 +779,7 @@ def unconditional_fit_ultranest(data, n_params, bounds_list, compute_rates_func,
 def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, bounds_list, compute_rates_func, verbose=1,
                                  pdf_components=None,
                                  likelihood_type="binned", S_sumw2=None, B_sumw2=None, use_finite_mc=False,
-                                 bounds_func=None, constraints=None):
+                                 bounds_func=None, constraints=None, extra_nll=None):
     """
     Performs a conditional maximum likelihood fit (profiling 1 parameter) using UltraNest.
     
@@ -826,9 +848,9 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, bounds_list,
             return 1e10, p
         if likelihood_type == "unbinned":
             probs = [pdf(data) if len(data) > 0 else np.array([]) for pdf in pdf_components]
-            return calc_nll_unbinned(p, len(data), probs, compute_rates_func), p
+            return _with_extra(calc_nll_unbinned(p, len(data), probs, compute_rates_func), extra_nll, p), p
         else:
-            return calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func), p
+            return _with_extra(calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func), extra_nll, p), p
 
     def prior_transform(cube):
         return np.array([cube[i] * (free_bounds[i][1] - free_bounds[i][0]) + free_bounds[i][0] for i in range(len(free_bounds))])
@@ -844,7 +866,7 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, bounds_list,
                 p[idx] = free_val
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
+            return -_with_extra(calc_nll_unbinned(p, len_obs, probs, compute_rates_func), extra_nll, p)
     else:
         def log_likelihood(free_p):
             p = np.zeros(n_params)
@@ -853,7 +875,7 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, bounds_list,
                 p[idx] = free_val
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+            return -_with_extra(calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func), extra_nll, p)
 
     param_names = [f'f{i+1}' for i in range(len(free_bounds))]
     run_kwargs = {'min_num_live_points': 50, 'dKL': np.inf, 'min_ess': 50, 'show_status': (verbose == 2), 'viz_callback': False}
@@ -869,7 +891,7 @@ def conditional_fit_1d_ultranest(test_val, fix_idx, n_params, data, bounds_list,
 def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data, bounds_list, compute_rates_func, verbose=1,
                                  pdf_components=None,
                                  likelihood_type="binned", S_sumw2=None, B_sumw2=None, use_finite_mc=False,
-                                 bounds_func=None, constraints=None):
+                                 bounds_func=None, constraints=None, extra_nll=None):
     """
     Performs a conditional maximum likelihood fit (profiling 2 parameters) using UltraNest.
     
@@ -934,9 +956,9 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
             return 1e10, p
         if likelihood_type == "unbinned":
             probs = [pdf(data) if len(data) > 0 else np.array([]) for pdf in pdf_components]
-            return calc_nll_unbinned(p, len(data), probs, compute_rates_func), p
+            return _with_extra(calc_nll_unbinned(p, len(data), probs, compute_rates_func), extra_nll, p), p
         else:
-            return calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func), p
+            return _with_extra(calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func), extra_nll, p), p
 
     def prior_transform(cube):
         return np.array([cube[i] * (free_bounds[i][1] - free_bounds[i][0]) + free_bounds[i][0] for i in range(len(free_bounds))])
@@ -953,7 +975,7 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
                 p[idx] = free_val
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll_unbinned(p, len_obs, probs, compute_rates_func)
+            return -_with_extra(calc_nll_unbinned(p, len_obs, probs, compute_rates_func), extra_nll, p)
     else:
         def log_likelihood(free_p):
             p = np.zeros(n_params)
@@ -963,7 +985,7 @@ def conditional_fit_2d_ultranest(test_vA, test_vB, fix_A, fix_B, n_params, data,
                 p[idx] = free_val
             if not _constraints_satisfied(constraints, p):
                 return -1e10
-            return -calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+            return -_with_extra(calc_nll(p, data, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func), extra_nll, p)
 
     param_names = [f'f{i+1}' for i in range(len(free_bounds))]
     run_kwargs = {'min_num_live_points': 50, 'dKL': np.inf, 'min_ess': 50, 'show_status': (verbose == 2), 'viz_callback': False}

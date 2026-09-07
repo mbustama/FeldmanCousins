@@ -277,7 +277,7 @@ def calc_nll(params, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
 
 # --- 3. Grid Search Optimizers (Binned) ---
 @njit(fastmath=True, nogil=True)
-def unconditional_fit_grid(N_obs, full_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func):
+def unconditional_fit_grid(N_obs, full_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func, extra_nll=None):
     """
     Performs an unconditional maximum likelihood fit via exhaustive grid search.
 
@@ -315,6 +315,11 @@ def unconditional_fit_grid(N_obs, full_grid_points, S_sumw2, B_sumw2, use_finite
     for row in range(len(full_grid_points)):
         p = full_grid_points[row]
         nll = calc_nll(p, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+        # Soft nuisance constraints. Guarded on `is not None` rather than always calling a
+        # no-op: numba specialises per argument type, so when extra_nll is None this branch
+        # is compiled out entirely and callers who do not use the feature pay nothing.
+        if extra_nll is not None:
+            nll += extra_nll(p)
         if nll < min_nll:
             min_nll = nll
             best_params = p.copy()
@@ -322,7 +327,7 @@ def unconditional_fit_grid(N_obs, full_grid_points, S_sumw2, B_sumw2, use_finite
     return min_nll, best_params
 
 @njit(fastmath=True, nogil=True)
-def conditional_fit_grid_1d(test_val, fix_idx, n_params, N_obs, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func):
+def conditional_fit_grid_1d(test_val, fix_idx, n_params, N_obs, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func, extra_nll=None):
     """
     Performs a conditional maximum likelihood fit with one parameter fixed (Profiling).
 
@@ -372,6 +377,11 @@ def conditional_fit_grid_1d(test_val, fix_idx, n_params, N_obs, cond_grid_points
                 free_i += 1
 
         nll = calc_nll(p, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+        # Soft nuisance constraints. Guarded on `is not None` rather than always calling a
+        # no-op: numba specialises per argument type, so when extra_nll is None this branch
+        # is compiled out entirely and callers who do not use the feature pay nothing.
+        if extra_nll is not None:
+            nll += extra_nll(p)
         if nll < min_nll:
             min_nll = nll
             best_params = p.copy()
@@ -379,7 +389,7 @@ def conditional_fit_grid_1d(test_val, fix_idx, n_params, N_obs, cond_grid_points
     return min_nll, best_params
 
 @njit(fastmath=True, nogil=True)
-def conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, N_obs, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func):
+def conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, N_obs, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func, extra_nll=None):
     """
     Performs a conditional maximum likelihood fit with two parameters fixed.
 
@@ -427,6 +437,11 @@ def conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, N_obs, con
                 free_i += 1
 
         nll = calc_nll(p, N_obs, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+        # Soft nuisance constraints. Guarded on `is not None` rather than always calling a
+        # no-op: numba specialises per argument type, so when extra_nll is None this branch
+        # is compiled out entirely and callers who do not use the feature pay nothing.
+        if extra_nll is not None:
+            nll += extra_nll(p)
         if nll < min_nll:
             min_nll = nll
             best_params = p.copy()
@@ -437,7 +452,7 @@ def conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, N_obs, con
 # --- 4. Toy Generators (Binned) ---
 @njit(fastmath=True, parallel=True, nogil=True)
 def generate_and_fit_toys_grid_1d(test_val, fix_idx, true_params, n_params,
-                                  full_grid_points, cond_grid_points, n_toys, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func):
+                                  full_grid_points, cond_grid_points, n_toys, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func, extra_nll=None):
     """
     Generates Poisson toys and computes the 1D test statistic distribution (Feldman-Cousins).
 
@@ -493,15 +508,15 @@ def generate_and_fit_toys_grid_1d(test_val, fix_idx, true_params, n_params,
         for i in range(n_bins):
             toy_N[i] = np.random.poisson(mu_true_flat[i])
 
-        uncond_nll, _ = unconditional_fit_grid(toy_N, full_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
-        cond_nll, _ = conditional_fit_grid_1d(test_val, fix_idx, n_params, toy_N, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+        uncond_nll, _ = unconditional_fit_grid(toy_N, full_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func, extra_nll)
+        cond_nll, _ = conditional_fit_grid_1d(test_val, fix_idx, n_params, toy_N, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func, extra_nll)
 
         t_statistics[t] = max(0.0, cond_nll - uncond_nll)
     return t_statistics
 
 @njit(fastmath=True, parallel=True, nogil=True)
 def generate_and_fit_toys_grid_2d(test_vA, test_vB, fix_A, fix_B, true_params, n_params,
-                                  full_grid_points, cond_grid_points, n_toys, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func):
+                                  full_grid_points, cond_grid_points, n_toys, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func, extra_nll=None):
     """
     Generates Poisson toys and computes the 2D test statistic distribution.
 
@@ -548,8 +563,8 @@ def generate_and_fit_toys_grid_2d(test_vA, test_vB, fix_A, fix_B, true_params, n
         for i in range(n_bins):
             toy_N[i] = np.random.poisson(mu_true_flat[i])
 
-        uncond_nll, _ = unconditional_fit_grid(toy_N, full_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
-        cond_nll, _ = conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, toy_N, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func)
+        uncond_nll, _ = unconditional_fit_grid(toy_N, full_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func, extra_nll)
+        cond_nll, _ = conditional_fit_grid_2d(test_vA, test_vB, fix_A, fix_B, n_params, toy_N, cond_grid_points, S_sumw2, B_sumw2, use_finite_mc, compute_rates_func, extra_nll)
 
         t_statistics[t] = max(0.0, cond_nll - uncond_nll)
     return t_statistics
