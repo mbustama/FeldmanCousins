@@ -123,6 +123,8 @@ The project structure is organized modularly to separate analytical likelihood m
    ├── docs/                            # Sphinx documentation configuration and source
    │   ├── dev/                         # Handoff/planning notes from past refactors (not part of the built docs)
    │   │   ├── AUDIT_BRIEF_dev-no-templates.md
+   │   │   ├── COVERAGE_BRIEF_dev-coverage.md
+   │   │   ├── EXTRA_NLL_BRIEF_dev-extra-nll.md
    │   │   ├── FIXES_BRIEF_dev-no-templates.md
    │   │   ├── FOLLOWUP_BRIEF_dev-no-templates.md
    │   │   └── REFACTOR_BRIEF_dev-no-templates.md
@@ -173,6 +175,7 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── test_constraints.py                          # Tests for scipy/UltraNest LinearConstraint/NonlinearConstraint support
    │   ├── test_core.py                                 # Core installation and import tests, including checks for optional dependencies
    │   ├── test_disconnected_intervals.py               # Tests for the contiguous-run helper and disconnected 1D interval reporting
+   │   ├── test_extra_nll.py                            # Tests for extra_nll: soft Gaussian constraints on nuisance parameters
    │   ├── test_finite_mc_likelihood.py                 # Hand-computed-reference tests for the finite-MC likelihood formula
    │   ├── test_json_export.py                          # Tests for the JSON results export: NumpyEncoder conversions and the 2D payload
    │   ├── test_io.py                                   # Tests for File I/O and intermediate .npz checkpoint recovery mechanisms

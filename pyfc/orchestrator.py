@@ -544,10 +544,19 @@ def compute_fc_intervals(data, grids, compute_rates_func=None, generate_toy_func
     # way to know the fix is a decorator.
     if extra_nll is not None and strategy == "grid":
         try:
+            import numba
             from numba.core.registry import CPUDispatcher
+            # Under NUMBA_DISABLE_JIT=1 the @njit decorator is a no-op returning the plain
+            # Python function, so the CPUDispatcher check below would reject a perfectly
+            # correct penalty. Nothing is compiled in that mode -- the "jitted" grid
+            # fitters are ordinary Python and can call anything -- so the requirement does
+            # not apply. This is not hypothetical: scripts/run_coverage.sh sets that flag
+            # for most of its run, and the guard failed two tests there before this branch
+            # existed.
+            jit_disabled = bool(numba.config.DISABLE_JIT)
         except ImportError:  # pragma: no cover - numba is a hard dependency
-            CPUDispatcher = ()
-        if not isinstance(extra_nll, CPUDispatcher):
+            CPUDispatcher, jit_disabled = (), False
+        if not jit_disabled and not isinstance(extra_nll, CPUDispatcher):
             raise TypeError(
                 "extra_nll must be a numba-jitted function when strategy='grid', because "
                 "the grid scan runs inside @njit code that cannot call a plain Python "

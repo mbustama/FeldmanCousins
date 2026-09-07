@@ -18,6 +18,7 @@ the penalty reaches the data fit but not the toys, the statistic and its critica
 come from DIFFERENT likelihoods and the coverage guarantee is gone, with no symptom.
 """
 
+import numba as _numba
 import numpy as np
 import pytest
 from numba import njit
@@ -364,6 +365,12 @@ def test_grid_strategy_accepts_a_jitted_penalty(tmp_path):
     )
 
 
+@pytest.mark.skipif(
+    bool(_numba.config.DISABLE_JIT),
+    reason="with NUMBA_DISABLE_JIT=1 the guard deliberately stands down -- @njit returns a "
+           "plain function and nothing is compiled, so the requirement does not apply. "
+           "scripts/run_coverage.sh runs most of the suite under that flag.",
+)
 def test_grid_strategy_rejects_a_plain_callable_with_an_actionable_message(tmp_path):
     """
     A user who forgets @njit must be told what to do. Left to numba the failure is a
@@ -648,3 +655,28 @@ def test_penalty_reaches_the_JITTED_toy_fits_specifically():
         "the toys' true parameters it should be well under 1, and an inflated value means "
         "the unconditional and conditional toy fits are not both paying it"
     )
+
+
+@pytest.mark.skipif(
+    not bool(_numba.config.DISABLE_JIT),
+    reason="only meaningful when the JIT is genuinely disabled; monkeypatching the config "
+           "cannot un-compile already-jitted fitters, so this runs under "
+           "NUMBA_DISABLE_JIT=1 -- which scripts/run_coverage.sh and the CI Coverage job "
+           "both set.",
+)
+def test_grid_guard_stands_down_when_the_jit_is_disabled(tmp_path):
+    """
+    Under NUMBA_DISABLE_JIT=1 the @njit decorator returns the plain Python function, so the
+    CPUDispatcher check would reject a correct penalty -- and nothing is compiled in that
+    mode anyway, so the requirement does not apply.
+
+    Not hypothetical: `scripts/run_coverage.sh` sets that flag for most of its run, and
+    this guard failed two tests there before the exemption existed. The CI Coverage job
+    runs the same script, so without this the feature would have broken CI.
+    """
+    def plain_python_penalty(params):
+        return ((params[1] - 1.15) / 0.05) ** 2
+
+    # Must NOT raise: with the JIT off, a plain callable is exactly what @njit produces.
+    results = _fc_run(tmp_path, plain_python_penalty, strategy="grid", n_toys=3)
+    assert np.all(np.isfinite(results["1d_t_data_p1"]))

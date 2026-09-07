@@ -123,9 +123,9 @@ PyFC is protected by a Continuous Integration (CI) pipeline powered by GitHub Ac
 
 The matrix job deliberately installs only `.[test]`, *without* the optional `optimizers` extra: that `ultranest` is optional is a promise PyFC makes to its users, and this is where that promise is checked.
 
-The test suite currently comprises 181 tests across 27 files under `tests/` (164 always run, plus 17 UltraNest-specific tests that skip automatically if the optional `ultranest` package isn't installed), grouped into four categories:
+The test suite currently comprises 198 tests across 28 files under `tests/` (180 always run, plus 17 UltraNest-specific tests that skip automatically if the optional `ultranest` package isn't installed), grouped into four categories:
 * **Core statistical correctness** (48 tests, 7 files): the smoothed unphysical-rate NLL penalty and its boundary-discontinuity/NaN handling, the finite-MC likelihood formula checked against hand-computed references (including its numerically-stable high-`alpha` reformulation), N-dimensional and non-contiguous binned data, disconnected 1D accepted-interval reporting, unbinned `pdf_components` correctness (2- and 3+-component models), the unbinned toy-generation/fitting pipeline end to end, and the unbinned grid-search path checked against brute-force oracles and the profile-likelihood invariants (a conditional fit never undercuts the unconditional minimum, and the two coincide exactly at the best-fit point).
-* **Optimizer robustness** (41 tests, 6 files): optimizer restarts and neighbor warm-starting, `bounds_func`/`constraints` support (SciPy and UltraNest `LinearConstraint`/`NonlinearConstraint`, including the zero-free-parameters edge case), SciPy boundary clamping, Asimov-dataset convergence (the minimizer must recover the known true parameters exactly), and the three UltraNest fits run for real against an Asimov dataset -- checked for MLE recovery, the profile-likelihood invariants, `bounds_func` handling, the unbinned likelihood path, and agreement with SciPy on the same optimum.
+* **Optimizer robustness** (58 tests, 7 files): optimizer restarts and neighbor warm-starting, `bounds_func`/`constraints` support (SciPy and UltraNest `LinearConstraint`/`NonlinearConstraint`, including the zero-free-parameters edge case), SciPy boundary clamping, Asimov-dataset convergence (the minimizer must recover the known true parameters exactly), and the three UltraNest fits run for real against an Asimov dataset -- checked for MLE recovery, the profile-likelihood invariants, `bounds_func` handling, the unbinned likelihood path, agreement with SciPy on the same optimum, and `extra_nll`'s soft Gaussian constraints -- checked against the closed-form `c +- z*s` interval, verified to reach the unconditional, conditional and toy fits separately, and pinned for sign, units and full-vector reassembly order.
 * **Algorithmic features** (13 tests, 2 files): `sparsify_grid`'s boundary-refinement guard, and the validated `adaptive_toys`/`toy_batch_size` early-stopping behavior.
 * **Infrastructure** (79 tests, 12 files): core imports and optional-dependency detection, I/O integrity, the real `warm_start`/checkpoint-resume machinery (not just an `.npz` round-trip), including resuming a run interrupted mid-2D-scan and `sparsify_grid`'s nearest-neighbour interpolation fallback for installs without SciPy, multiprocessing serialization via `ProcessPoolExecutor` and the toy pool's documented recovery when a user's callable turns out to be unpicklable, Numba JIT compilation hooks, UltraNest's internal-bug retry wrapper, corner-plot generation, the JSON results export (`NumpyEncoder`'s type conversions and the 2D payload, round-tripped through a stock `json.load`), and the CLI/JSON configuration layer — its `Defaults -> JSON -> CLI` precedence chain, its refusal to spin or invent answers when stdin runs out, and a set of self-discovering structural sweeps that check every analysis parameter lines up across all four places it is written down (the hardcoded defaults, the `argparse` flags, the interactive wizard, and `compute_fc_intervals`' own signature).
 
@@ -166,6 +166,8 @@ FeldmanCousins/
 ├── docs/                            # Sphinx documentation configuration and source
 │   ├── dev/                         # Handoff/planning notes from past refactors (not part of the built docs)
 │   │   ├── AUDIT_BRIEF_dev-no-templates.md
+│   │   ├── COVERAGE_BRIEF_dev-coverage.md
+│   │   ├── EXTRA_NLL_BRIEF_dev-extra-nll.md
 │   │   ├── FIXES_BRIEF_dev-no-templates.md
 │   │   ├── FOLLOWUP_BRIEF_dev-no-templates.md
 │   │   └── REFACTOR_BRIEF_dev-no-templates.md
@@ -216,6 +218,7 @@ FeldmanCousins/
 │   ├── test_constraints.py                          # Tests for scipy/UltraNest LinearConstraint/NonlinearConstraint support
 │   ├── test_core.py                                 # Core installation and import tests, including checks for optional dependencies
 │   ├── test_disconnected_intervals.py               # Tests for the contiguous-run helper and disconnected 1D interval reporting
+│   ├── test_extra_nll.py                            # Tests for extra_nll: soft Gaussian constraints on nuisance parameters
 │   ├── test_finite_mc_likelihood.py                 # Hand-computed-reference tests for the finite-MC likelihood formula
 │   ├── test_json_export.py                          # Tests for the JSON results export: NumpyEncoder conversions and the 2D payload
 │   ├── test_io.py                                   # Tests for File I/O and intermediate .npz checkpoint recovery mechanisms
@@ -560,6 +563,68 @@ For the SciPy path, supplying `constraints` automatically switches the optimizer
 **Which one should I use?** If the constraint only ever couples the scan's currently-fixed test parameter(s) to a free nuisance parameter, `bounds_func` is cheaper (it tightens the box itself, so the optimizer never has to work near a boundary at all) and is the mechanism used in the example above for a 1D/2D scan *over* `f_e` or `f_mu`. If your scan fixes some *other* parameter and profiles `f_e` and `f_mu` together as simultaneously-free nuisance parameters, only `constraints` can express that. The two mechanisms compose: pass both if you have constraints of both shapes, and they can be used together on the very same fit call.
 
 ---
+
+### Soft Constraints on Nuisance Parameters (`extra_nll`)
+
+The two mechanisms above are **hard** constraints: they declare regions of parameter space
+allowed or forbidden. What they cannot express is a **soft** one — *"`norm_reactor` is
+1.0 ± 4.6%, because someone measured it"* — which is how essentially every external
+measurement of a systematic enters a physics likelihood. That is a term added to the NLL,
+not a boundary.
+
+`extra_nll` is that hook. It takes a callable, evaluated at every NLL evaluation:
+
+```python
+from numba import njit
+import numpy as np
+
+CENTRES = np.array([1.0, 1.0, 1.0])       # reactor, crust, mantle normalisations
+WIDTHS  = np.array([0.046, 0.11, 0.35])   # 4.6%, 11%, 35%
+
+@njit(fastmath=True, nogil=True)
+def gaussian_constraints(params):
+    return np.sum(((params[2:5] - CENTRES) / WIDTHS) ** 2)
+
+compute_fc_intervals(..., extra_nll=gaussian_constraints)
+```
+
+> **Units.** PyFC's NLL is `-2 ln L`, so a Gaussian of width `s` about `c` contributes
+> `((x - c)/s)**2` — **not** the `0.5 * ((x - c)/s)**2` of a `-ln L` convention. Getting
+> this wrong is silent: the fit converges and the interval looks reasonable, but every
+> constraint is weaker by √2, so a stated 4.6% prior actually acts as 6.5%. The check is
+> that a lone parameter constrained only by this term gives a test statistic of exactly
+> 1.0 at `c + s`.
+
+It receives the **full** parameter vector in `grids` order, with any scan-fixed values
+already substituted — the same convention `constraints` uses, and the only one under which
+one function works for the unconditional fit, the 1D scan and the 2D scan alike.
+
+Being a callable rather than a table of `(centre, width)` triples matters: it also covers a
+**one-sided** bound (flat below a threshold, quadratic above — e.g. a cosmological limit)
+and a constraint on a quantity **derived** from several parameters, neither of which a table
+can express.
+
+The term applies to every fit the construction performs — unconditional, conditional, **and
+the Monte Carlo toys**. The toys are the reason this matters: if the term reached the data
+fit but not the toys, the observed test statistic and its critical value would be computed
+under different likelihoods, and the frequentist coverage the whole method exists to
+guarantee would be silently lost.
+
+**Choosing between the three:**
+
+| You want to say | Use |
+|---|---|
+| "these parameters are linked by an inequality" (`a + b <= 1`) | `constraints` |
+| "this free parameter's range depends on the one being scanned" | `bounds_func` |
+| "this parameter was measured to be `c ± s`" | `extra_nll` |
+
+With `strategy="grid"` the callable must be `@njit`-decorated, because the grid scan runs
+inside compiled code that cannot call an arbitrary Python function; passing a plain callable
+raises `TypeError` with instructions. Every other strategy accepts any Python callable. Note
+also that with `likelihood_type="unbinned"` toys are dispatched to a `ProcessPoolExecutor`,
+so an unpicklable `extra_nll` (a lambda or closure) makes that pool fall back to threads —
+correct, but slower; define it at module level to keep the process pool.
+
 
 ## HPC & Parallelization Guidelines
 
