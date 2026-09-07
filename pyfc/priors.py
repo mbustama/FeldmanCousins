@@ -112,17 +112,26 @@ def _validate_block(indices, centres, cov):
             "symmetric by construction, so an asymmetric one means the matrix was built wrong "
             "-- most often a correlation matrix filled in on one triangle only."
         )
-    try:
-        np.linalg.cholesky(cv)
-    except np.linalg.LinAlgError:
-        eigs = np.linalg.eigvalsh(cv)
+    # Tested by eigenvalue with a relative tolerance, NOT by np.linalg.cholesky alone.
+    # Cholesky's rejection of an exactly-singular matrix is a matter of floating-point luck:
+    # for sigma=(0.2, 0.3) at correlation exactly 1, `0.2*0.3` squared and `0.04*0.09`
+    # disagree in the last bit, the determinant lands at +1e-18, and cholesky ACCEPTS it.
+    # Measured: it accepted 1 of 8 exactly-singular rho=1 covariances. The tolerance below is
+    # the usual numerical-rank one (numpy uses the same shape of test in matrix_rank), so a
+    # merely ill-conditioned matrix still passes -- condition number 1e9 is fine -- while a
+    # rank-deficient one is caught however the rounding happens to fall.
+    eigs = np.linalg.eigvalsh(cv)
+    tol = max(float(eigs.max()), 0.0) * n * np.finfo(np.float64).eps
+    if float(eigs.min()) <= tol:
         raise ValueError(
-            f"cov is not positive definite (smallest eigenvalue {eigs.min():.3e}). "
-            "The resulting penalty would be unbounded below along at least one direction, so "
-            "the fit would be pushed away from the constraint rather than towards it, and "
-            "nothing downstream would report a problem. Check for a correlation of exactly "
-            "+-1, a duplicated row, or more parameters than the measurement actually constrains."
-        ) from None
+            f"cov is not positive definite to working precision (smallest eigenvalue "
+            f"{eigs.min():.3e}, tolerance {tol:.3e}, condition number "
+            f"{np.linalg.cond(cv):.3e}). The resulting penalty would be unbounded below along "
+            "at least one direction, so the fit would be pushed away from the constraint "
+            "rather than towards it, and nothing downstream would report a problem. Check for "
+            "a correlation of exactly +-1, a duplicated row, or more parameters than the "
+            "measurement actually constrains."
+        )
 
     inv = np.linalg.inv(cv)
     # Symmetrise: inv() of a symmetric matrix is symmetric only up to rounding, and the
