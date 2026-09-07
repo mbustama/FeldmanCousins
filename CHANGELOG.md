@@ -215,6 +215,53 @@ code before being kept.
   for data generated at the no-signal expectation. `docs/source/tutorials.rst` and
   the README table gain a row for it, paired with notebook `06` as the soft and
   hard halves of the same constraint story.
+
+- **`pyfc.priors`, builders for correlated and composite priors.** `extra_nll`
+  could always express a pairwise or higher-dimensional constraint -- it receives
+  the full parameter vector, so a correlated Gaussian is a quadratic form with
+  off-diagonal terms, verified here against an exact oracle at a correlation of
+  0.9 and over a dense 13x13 covariance (worst |t-1| = 2.8e-09), including inside
+  the `@njit` grid scan. What it could not do was stop three silent mistakes, and
+  that is what these builders are for.
+
+  `gaussian_block(indices, centres, cov)` takes a COVARIANCE and inverts it once,
+  at build time, in `-2 ln L` units. `gaussian_block_from_correlation` takes the
+  form results are actually published in -- central values, per-parameter sigmas,
+  a correlation matrix -- because the outer product is easy to omit and omitting
+  it still leaves a symmetric positive-definite matrix that nothing complains
+  about. `combine_priors` sums any number of them; composition is additive, nests
+  cheaply (3.03 ns for one 2x2 block, 4.85 ns for three nested), and stays jitted,
+  so adding a second constraint does not silently cost you `strategy="grid"`.
+
+  **Marginal, not conditional.** Profiling a Gaussian returns the marginal, so the
+  1-sigma point a scan reports for one parameter of a correlated block is
+  `sqrt(Sigma_ii)` -- a COVARIANCE element -- and not `1/sqrt((Sigma^-1)_ii)`,
+  which is what reading the inverse's diagonal gives. At a correlation of 0.9
+  those are 0.100 and 0.0436: a factor of 2.3, in the direction of claiming a
+  constraint twice as tight as the measurement supports. The whole test file is
+  built on that identity, since one assertion catches a dropped off-diagonal, a
+  wrong units convention, and an inverse applied one time too many or too few.
+
+  **Why the builders and not a hand-written function.** Three measured reasons.
+  Numba freezes a global or closed-over matrix BY VALUE when it compiles: editing
+  the covariance afterwards is ignored, silently, for `M[i,j] = x`, `M *= x`,
+  `M[:] = new` and rebinding the name alike -- so these are factories, and
+  changing a constraint means rebuilding, visibly. `d @ inv @ d` costs ~154 ns
+  almost regardless of size, which is BLAS dispatch overhead rather than
+  arithmetic, against ~1.2 ns for an explicit expression over a 2x2 block; since
+  the prior runs at every NLL evaluation of every fit of every toy, and one
+  `calc_nll` is ~628 ns, the matmul form would add ~25% to a pairwise-constrained
+  run for nothing. The builders switch formulation at a measured crossover of 35
+  parameters, exposed as `MATMUL_THRESHOLD`. And a covariance that is not positive
+  definite is accepted by `np.linalg.inv` while making the penalty unbounded below,
+  so the "constraint" pushes the fit away and the run completes looking ordinary;
+  that is rejected up front, naming the smallest eigenvalue.
+
+  `gaussian_block`, `gaussian_block_from_correlation` and `combine_priors` are
+  re-exported from `pyfc`. Section 4 of notebook `08` works through all of it, and
+  all 16 mutations of the module -- dropped off-diagonal factor, missing inverse,
+  ignored threshold, each validation guard, the symmetrisation of the inverse --
+  are caught by `tests/test_priors.py`.
 - **`pyfc.__version__`**, read from the installed distribution's metadata rather
   than written down a second time. `pyproject.toml` is the single source: the
   package exposes it, and `docs/source/conf.py` imports that value instead of

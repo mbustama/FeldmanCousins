@@ -49,7 +49,7 @@ project.
      - You're running on a preemptible/walltime-limited cluster, or just want to see the checkpointing "Salient Feature" actually happen.
    * - 08
      - `pyfc_gaussian_priors_tutorial.ipynb <https://github.com/mbustama/FeldmanCousins/blob/main/examples/08_pyfc_gaussian_priors_tutorial.ipynb>`_
-     - Adding *soft* Gaussian constraints on nuisance parameters with ``extra_nll``, including a closed-form check of PyFC's :math:`-2\ln L` convention, a degeneracy that a 3% prior on the background visibly tightens, and one-sided/derived-quantity penalties a table of ``(centre, width)`` can't express.
+     - Adding *soft* constraints on nuisance parameters with ``extra_nll``, including a closed-form check of PyFC's :math:`-2\ln L` convention, a degeneracy that a 3% prior on the background visibly tightens, **correlated (pairwise and higher-dimensional) priors** built with ``pyfc.priors`` -- with the marginal-vs-conditional distinction worked through as running code -- and one-sided/derived-quantity penalties a table of ``(centre, width)`` can't express.
      - A nuisance parameter in your model was measured elsewhere and you want that external result to constrain the fit.
 
 ``01``-``03`` build on each other and are worth reading in order for a first project;

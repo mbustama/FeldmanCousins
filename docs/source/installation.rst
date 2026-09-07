@@ -163,6 +163,7 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── optimizers.py                # Wrapper functions mapping objective functions to SciPy/UltraNest
    │   ├── orchestrator.py              # The main pipeline executing the Feldman-Cousins algorithm
    │   ├── plotting.py                  # Visualization suite for 1D profiles and 2D contours
+   │   ├── priors.py                    # Builders for correlated/composite extra_nll priors
    │   ├── toys.py                      # Multiprocessing engines for MC pseudo-experiment generation
    │   └── unbinned.py                  # Extended Unbinned Maximum Likelihood (EUML) formulations
    ├── scripts/
@@ -186,6 +187,7 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── test_optimizers.py                           # Tests for continuous optimization routines, including SciPy boundary clamping
    │   ├── test_pdf_components.py                       # Tests for the pdf_components mechanism (2- and 3+-component correctness)
    │   ├── test_plotting.py                             # Tests for generate_corner_plot's figure/axes shape, smoothing toggles, and output file
+   │   ├── test_priors.py                               # Tests for pyfc.priors against the marginal oracle, both formulations, and the freezing snapshot
    │   ├── test_restarts.py                             # Tests for optimizer restarts, neighbor warm-starting, and res.success handling
    │   ├── test_smoothing.py                            # Tests for the smoothed unphysical-rate NLL penalty, including NaN handling
    │   ├── test_sparsify_grid.py                        # Regression tests for the sparsify_grid boundary-refinement guard fix

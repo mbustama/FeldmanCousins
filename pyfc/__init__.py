@@ -30,10 +30,18 @@ except PackageNotFoundError:
 from .generate_config import main as generate_config  # noqa: E402
 from .orchestrator import compute_fc_intervals  # noqa: E402
 from .plotting import generate_corner_plot  # noqa: E402
+from .priors import (  # noqa: E402
+    combine_priors,
+    gaussian_block,
+    gaussian_block_from_correlation,
+)
 
 __all__ = [
     "__version__",
+    "combine_priors",
     "compute_fc_intervals",
+    "gaussian_block",
+    "gaussian_block_from_correlation",
     "generate_config",
     "generate_corner_plot",
 ]
