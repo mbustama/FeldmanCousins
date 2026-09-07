@@ -574,6 +574,12 @@ def test_orchestrator_forwards_extra_nll_to_the_toy_generators(tmp_path):
 
 
 @njit(fastmath=True, nogil=True)
+def _nuisance_penalty_at_truth(params):
+    """Centred on the toys' own true params, so a correct implementation sees it cancel."""
+    return ((params[1] - 1.0) / 0.05) ** 2
+
+
+@njit(fastmath=True, nogil=True)
 def _seed_numba_rng(s):
     """Numba keeps its own RNG state; np.random.seed() from Python does not touch it."""
     np.random.seed(s)
@@ -611,4 +617,34 @@ def test_penalty_reaches_the_JITTED_toy_fits_specifically():
         "the jitted toy generator produced identical statistics with and without the "
         "penalty from an identical RNG seed -- it is not forwarding extra_nll to the grid "
         "fitters, so t_critical and t_data would come from different likelihoods"
+    )
+
+    # "Differs" is not enough on its own. The generator forwards the penalty to TWO fits,
+    # unconditional and conditional, and dropping it from just one still changes the
+    # numbers -- so the assertion above passes against a half-wired implementation that
+    # biases every toy statistic in one direction.
+    #
+    # This second check pins the balance between them. With the penalty centred on the
+    # toys' own true parameters and the tested value there too, both fits pay the same
+    # penalty and it cancels, so t stays small. Drop it from the unconditional fit alone
+    # and that fit escapes to a lower NLL, inflating t = cond - uncond. Measured over five
+    # seeds and BOTH numba versions available here (0.60 and 0.67): correct clusters at
+    # 0.466-0.506, half-wired at 1.021-1.118. The 0.75 threshold sits in that gap with
+    # roughly 50% margin either side.
+    #
+    # 400 toys, not 60. At 60 the median is noisy enough that the two populations overlap
+    # across numba versions -- measured correct 0.357 / mutated 0.778 on 0.60, which the
+    # threshold that worked on 0.67 would have let through. A statistical assertion whose
+    # discriminating power depends on the compiler version is not a test, and the fix is
+    # more samples rather than a threshold tuned to one machine.
+    _seed_numba_rng(11)
+    centred = np.asarray(
+        generate_and_fit_toys_grid_1d(
+            1.0, 0, np.array([1.0, 1.0]), 2, full, cond, 400, s2, s2, False,
+            _signal_rate, _nuisance_penalty_at_truth),
+        dtype=float)
+    assert np.median(centred) < 0.75, (
+        f"median toy statistic is {np.median(centred):.3f}; with the penalty centred on "
+        "the toys' true parameters it should be well under 1, and an inflated value means "
+        "the unconditional and conditional toy fits are not both paying it"
     )
