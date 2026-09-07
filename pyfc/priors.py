@@ -38,6 +38,12 @@ two differ by a factor of 2.3 at a correlation of 0.9.  If your source document
 quotes per-parameter uncertainties and a correlation matrix, they are marginal
 sigmas and `gaussian_block_from_correlation` is the builder that wants them.
 
+See the README section "Correlated and Composite Priors (`pyfc.priors`)" for a
+worked example, and notebook 08 for the same material as running code with the
+marginal-vs-conditional comparison printed out.  (Referred to by number, not by
+filename: notebook titles have been renamed once already and a docstring is a
+poor place to discover that.)
+
 Created: v0.20.0
 Author: Mauricio Bustamante (mbustamante@gmail.com)
 
