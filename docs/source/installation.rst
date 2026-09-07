@@ -154,7 +154,7 @@ The project structure is organized modularly to separate analytical likelihood m
    │   ├── 05_pyfc_strategy_comparison_tutorial.ipynb   # grid/scipy/hybrid strategy comparison + custom plotting from disk
    │   ├── 06_pyfc_joint_constraints_tutorial.ipynb     # Worked example: bounds_func/constraints for joint & simplex-constrained parameters
    │   ├── 07_pyfc_checkpointing_tutorial.ipynb         # Interrupting (SIGTERM) and resuming a real run via warm_start
-   │   └── 08_pyfc_gaussian_priors_tutorial.ipynb       # Soft Gaussian constraints on nuisance parameters via extra_nll
+   │   └── 08_pyfc_soft_constraints_tutorial.ipynb       # Soft constraints via extra_nll/pyfc.priors: Gaussian, correlated, one-sided
    ├── pyfc/                            # Main Python package
    │   ├── __init__.py                  # Package initialization and metadata
    │   ├── binned.py                    # Binned NLL math and Numba-accelerated optimizers
